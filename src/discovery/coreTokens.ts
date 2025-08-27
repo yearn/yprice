@@ -1,0 +1,287 @@
+import { TokenInfo } from './types';
+
+// Core tokens that should always be included for pricing
+export const CORE_TOKENS: Record<number, TokenInfo[]> = {
+  1: [ // Ethereum
+    {
+      chainId: 1,
+      address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 1,
+      address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 1,
+      address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 1,
+      address: '0x6b175474e89094c44da98b954eedeac495271d0f',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 1,
+      address: '0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e',
+      symbol: 'YFI',
+      name: 'yearn.finance',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 1,
+      address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599',
+      symbol: 'WBTC',
+      name: 'Wrapped Bitcoin',
+      decimals: 8,
+      source: 'core',
+    },
+  ],
+  10: [ // Optimism
+    {
+      chainId: 10,
+      address: '0x4200000000000000000000000000000000000006',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 10,
+      address: '0x7f5c764cbc14f9669b88837ca1490cca17c31607',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 10,
+      address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 10,
+      address: '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18,
+      source: 'core',
+    },
+  ],
+  137: [ // Polygon
+    {
+      chainId: 137,
+      address: '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
+      symbol: 'WMATIC',
+      name: 'Wrapped Matic',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 137,
+      address: '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 137,
+      address: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 137,
+      address: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 137,
+      address: '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18,
+      source: 'core',
+    },
+  ],
+  250: [ // Fantom
+    {
+      chainId: 250,
+      address: '0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83',
+      symbol: 'WFTM',
+      name: 'Wrapped Fantom',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 250,
+      address: '0x74b23882a30290451a17c44f4f05243b6b58c76d',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 250,
+      address: '0x04068da6c83afcfa0e13ba15a6696662335d5b75',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 250,
+      address: '0x049d68029688eabf473097a2fc38ef61633a3c7a',
+      symbol: 'fUSDT',
+      name: 'Frapped USDT',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 250,
+      address: '0x8d11ec38a3eb5e956b052f67da8bdc9bef8abf3e',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18,
+      source: 'core',
+    },
+  ],
+  42161: [ // Arbitrum
+    {
+      chainId: 42161,
+      address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 42161,
+      address: '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 42161,
+      address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 42161,
+      address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 42161,
+      address: '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18,
+      source: 'core',
+    },
+  ],
+  100: [ // xDai/Gnosis
+    {
+      chainId: 100,
+      address: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d',
+      symbol: 'WXDAI',
+      name: 'Wrapped xDAI',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 100,
+      address: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 100,
+      address: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 100,
+      address: '0x4ecaba5870353805a9f068101a40e0f32ed605c6',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6,
+      source: 'core',
+    },
+  ],
+  8453: [ // Base
+    {
+      chainId: 8453,
+      address: '0x4200000000000000000000000000000000000006',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18,
+      source: 'core',
+    },
+    {
+      chainId: 8453,
+      address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6,
+      source: 'core',
+    },
+    {
+      chainId: 8453,
+      address: '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca',
+      symbol: 'USDbC',
+      name: 'USD Base Coin',
+      decimals: 6,
+      source: 'core',
+    },
+  ],
+};
+
+export function getCoreTokensForChain(chainId: number): TokenInfo[] {
+  return CORE_TOKENS[chainId] || [];
+}
+
+export function getAllCoreTokens(): TokenInfo[] {
+  const allTokens: TokenInfo[] = [];
+  for (const tokens of Object.values(CORE_TOKENS)) {
+    allTokens.push(...tokens);
+  }
+  return allTokens;
+}

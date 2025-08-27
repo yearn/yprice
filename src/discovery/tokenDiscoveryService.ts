@@ -1,0 +1,238 @@
+import { TokenInfo } from './types';
+import { DISCOVERY_CONFIGS } from './config';
+import { CurveDiscovery } from './curveDiscovery';
+import { VeloDiscovery } from './veloDiscovery';
+import { YearnDiscovery } from './yearnDiscovery';
+import { TokenListDiscovery } from './tokenListDiscovery';
+import { GammaDiscovery } from './gammaDiscovery';
+import { PendleDiscovery } from './pendleDiscovery';
+import { AAVEDiscovery } from './aaveDiscovery';
+import { CompoundDiscovery } from './compoundDiscovery';
+import { getCoreTokensForChain } from './coreTokens';
+import { ERC20Token } from '../models';
+import { logger } from '../utils';
+
+export class TokenDiscoveryService {
+  private discoveredTokens: Map<number, TokenInfo[]> = new Map();
+  private tokenCache: Map<number, ERC20Token[]> = new Map();
+  private lastDiscovery: number = 0;
+  private discoveryInterval: number = 3600000; // 1 hour
+
+  async discoverAllTokens(forceRefresh: boolean = false): Promise<Map<number, ERC20Token[]>> {
+    const now = Date.now();
+    
+    // Use cache if available and not forcing refresh
+    if (!forceRefresh && this.lastDiscovery && (now - this.lastDiscovery) < this.discoveryInterval) {
+      logger.info('Using cached discovered tokens');
+      return this.tokenCache;
+    }
+
+    logger.info('Starting token discovery across all chains...');
+    this.discoveredTokens.clear();
+    this.tokenCache.clear();
+
+    // Discover tokens for each chain in parallel
+    const discoveryPromises: Promise<void>[] = [];
+    
+    for (const [chainId, config] of Object.entries(DISCOVERY_CONFIGS)) {
+      discoveryPromises.push(this.discoverChainTokens(Number(chainId), config));
+    }
+
+    await Promise.all(discoveryPromises);
+
+    // Convert discovered tokens to ERC20Token format
+    for (const [chainId, tokens] of this.discoveredTokens.entries()) {
+      const erc20Tokens = this.convertToERC20Tokens(chainId, tokens);
+      this.tokenCache.set(chainId, erc20Tokens);
+      logger.info(`Chain ${chainId}: Discovered ${erc20Tokens.length} unique tokens`);
+    }
+
+    this.lastDiscovery = now;
+    return this.tokenCache;
+  }
+
+  private async discoverChainTokens(chainId: number, config: any): Promise<void> {
+    const tokens: TokenInfo[] = [];
+    
+    try {
+      // Get RPC URL from environment
+      const rpcUrl = this.getRpcUrl(chainId);
+
+      // 0. ALWAYS add core tokens first (WETH, USDC, USDT, DAI, etc)
+      const coreTokens = getCoreTokensForChain(chainId);
+      tokens.push(...coreTokens);
+      logger.info(`Chain ${chainId}: Added ${coreTokens.length} core tokens`);
+
+      // 1. Add extra configured tokens
+      if (config.extraTokens) {
+        for (const address of config.extraTokens) {
+          tokens.push({
+            address: address.toLowerCase(),
+            chainId,
+            source: 'configured',
+          });
+        }
+        logger.info(`Chain ${chainId}: Added ${config.extraTokens.length} configured tokens`);
+      }
+
+      // 2. Discover Yearn vaults
+      if (config.yearnRegistryAddress || chainId) {
+        const yearnDiscovery = new YearnDiscovery(chainId, rpcUrl);
+        const yearnTokens = await yearnDiscovery.discoverTokens();
+        tokens.push(...yearnTokens);
+        logger.info(`Chain ${chainId}: Discovered ${yearnTokens.length} Yearn tokens`);
+      }
+
+      // 3. Discover Curve pools
+      if (config.curveFactoryAddress || config.curveApiUrl) {
+        const curveDiscovery = new CurveDiscovery(
+          chainId,
+          config.curveFactoryAddress,
+          config.curveApiUrl,
+          rpcUrl
+        );
+        
+        const curveTokens = await curveDiscovery.discoverTokens();
+        tokens.push(...curveTokens);
+        logger.info(`Chain ${chainId}: Discovered ${curveTokens.length} Curve tokens`);
+      }
+
+      // 4. Discover Velodrome/Aerodrome pools
+      if (config.veloSugarAddress || config.veloApiUrl) {
+        const veloDiscovery = new VeloDiscovery(
+          chainId,
+          config.veloSugarAddress,
+          config.veloApiUrl,
+          rpcUrl
+        );
+        
+        const veloTokens = await veloDiscovery.discoverTokens();
+        tokens.push(...veloTokens);
+        logger.info(`Chain ${chainId}: Discovered ${veloTokens.length} Velodrome/Aerodrome tokens`);
+      }
+
+      // 5. Load from token lists (Uniswap, 1inch, CoinGecko, etc.)
+      const tokenListDiscovery = new TokenListDiscovery(chainId);
+      const tokenListTokens = await tokenListDiscovery.discoverTokens();
+      tokens.push(...tokenListTokens);
+      logger.info(`Chain ${chainId}: Discovered ${tokenListTokens.length} tokens from token lists`);
+
+      // 6. Discover Gamma Protocol tokens
+      const gammaDiscovery = new GammaDiscovery(chainId);
+      const gammaTokens = await gammaDiscovery.discoverTokens();
+      tokens.push(...gammaTokens);
+      if (gammaTokens.length > 0) {
+        logger.info(`Chain ${chainId}: Discovered ${gammaTokens.length} Gamma tokens`);
+      }
+
+      // 7. Discover Pendle tokens
+      const pendleDiscovery = new PendleDiscovery(chainId);
+      const pendleTokens = await pendleDiscovery.discoverTokens();
+      tokens.push(...pendleTokens);
+      if (pendleTokens.length > 0) {
+        logger.info(`Chain ${chainId}: Discovered ${pendleTokens.length} Pendle tokens`);
+      }
+
+      // 8. Discover AAVE tokens
+      if (config.aaveV2LendingPool || config.aaveV3Pool) {
+        const aaveDiscovery = new AAVEDiscovery(
+          chainId,
+          config.aaveV2LendingPool,
+          config.aaveV3Pool,
+          rpcUrl
+        );
+        
+        const aaveTokens = await aaveDiscovery.discoverTokens();
+        tokens.push(...aaveTokens);
+        if (aaveTokens.length > 0) {
+          logger.info(`Chain ${chainId}: Discovered ${aaveTokens.length} AAVE tokens`);
+        }
+      }
+
+      // 9. Discover Compound tokens
+      if (config.compoundComptroller) {
+        const compoundDiscovery = new CompoundDiscovery(
+          chainId,
+          config.compoundComptroller,
+          rpcUrl
+        );
+        
+        const compoundTokens = await compoundDiscovery.discoverTokens();
+        tokens.push(...compoundTokens);
+        if (compoundTokens.length > 0) {
+          logger.info(`Chain ${chainId}: Discovered ${compoundTokens.length} Compound tokens`);
+        }
+      }
+
+      // Store discovered tokens
+      this.discoveredTokens.set(chainId, this.deduplicateTokens(tokens));
+    } catch (error) {
+      logger.error(`Token discovery failed for chain ${chainId}:`, error);
+      // Store empty array on error to prevent retrying too frequently
+      this.discoveredTokens.set(chainId, []);
+    }
+  }
+
+  private convertToERC20Tokens(chainId: number, tokens: TokenInfo[]): ERC20Token[] {
+    const erc20Tokens: ERC20Token[] = [];
+    
+    for (const token of tokens) {
+      erc20Tokens.push({
+        address: token.address,
+        symbol: token.symbol || 'UNKNOWN',
+        name: token.name || 'Unknown Token',
+        decimals: token.decimals || 18,
+        chainId: chainId,
+      });
+    }
+
+    return erc20Tokens;
+  }
+
+  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
+    const seen = new Set<string>();
+    const unique: TokenInfo[] = [];
+
+    for (const token of tokens) {
+      const key = token.address.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(token);
+      }
+    }
+
+    return unique;
+  }
+
+  private getRpcUrl(chainId: number): string | undefined {
+    // Use the existing RPC_URI_FOR_[chainId] pattern from .env
+    const envKey = `RPC_URI_FOR_${chainId}`;
+    return process.env[envKey];
+  }
+
+  getTokensForChain(chainId: number): ERC20Token[] {
+    return this.tokenCache.get(chainId) || [];
+  }
+
+  getAllTokens(): Map<number, ERC20Token[]> {
+    return this.tokenCache;
+  }
+
+  getTotalTokenCount(): number {
+    let total = 0;
+    for (const tokens of this.tokenCache.values()) {
+      total += tokens.length;
+    }
+    return total;
+  }
+
+  getChainTokenCounts(): Record<number, number> {
+    const counts: Record<number, number> = {};
+    for (const [chainId, tokens] of this.tokenCache.entries()) {
+      counts[chainId] = tokens.length;
+    }
+    return counts;
+  }
+}
+
+export default new TokenDiscoveryService();
