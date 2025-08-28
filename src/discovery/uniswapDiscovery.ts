@@ -7,7 +7,7 @@ import axios from 'axios';
 const UNISWAP_V2_FACTORIES: Record<number, string> = {
   1: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f', // Ethereum
   10: '0x0c3c1c532F1e39EdF36BE9Fe0bE1410313E074Bf', // Optimism
-  137: '0x9e5A52f57b3038F1B8EeE45dF28e0a7564b8ab05', // Polygon
+  137: '0x9E5A52F57B3038F1B8EeE45Df28e0A7564B8aB05', // Polygon
   42161: '0xf1D7CC64Fb4452F05c498126312eBE29f30Fbcf9', // Arbitrum
   8453: '0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6', // Base
 };
@@ -68,7 +68,7 @@ export class UniswapDiscovery {
     const v3Tokens = await this.discoverV3Pools();
     tokens.push(...v3Tokens);
 
-    logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Uniswap tokens total`);
+    logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Uniswap tokens total`);
     return this.deduplicateTokens(tokens);
   }
 
@@ -95,7 +95,7 @@ export class UniswapDiscovery {
       const maxPairs = Math.min(totalPairs, 500);
       const startIndex = Math.max(0, totalPairs - maxPairs);
 
-      logger.info(`Chain ${this.chainId}: Fetching ${maxPairs} most recent Uniswap V2 pairs from total ${totalPairs}`);
+      logger.debug(`Chain ${this.chainId}: Fetching ${maxPairs} most recent Uniswap V2 pairs from total ${totalPairs}`);
 
       // Batch fetch pair addresses
       const pairContracts = [];
@@ -161,9 +161,10 @@ export class UniswapDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Found ${tokens.length} Uniswap V2 tokens`);
+      logger.debug(`Chain ${this.chainId}: Found ${tokens.length} Uniswap V2 tokens`);
     } catch (error) {
-      logger.warn(`Uniswap V2 discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Uniswap V2 discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;

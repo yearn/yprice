@@ -87,7 +87,7 @@ export class GammaDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Gamma tokens`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Gamma tokens`);
     } catch (error: any) {
       logger.warn(`Gamma discovery failed for chain ${this.chainId}:`, error.message);
     }

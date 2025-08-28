@@ -94,7 +94,7 @@ export class PriceCache {
 
   getStats(): { total: number; chains: Map<number, number> } {
     const entries = Array.from(this.cache.keys());
-    const grouped = groupBy(entries, key => parseInt(key.split(':')[0]));
+    const grouped = groupBy(entries, key => key.split(':')[0] || '0');
     
     const chains = new Map<number, number>(
       Object.entries(mapValues(grouped, arr => arr.length))
@@ -111,7 +111,7 @@ export class PriceCache {
     return `${chainId}:${address.toLowerCase()}`;
   }
 
-  private getTokenType(symbol: string, address: string): TokenType {
+  private getTokenType(symbol: string, _address: string): TokenType {
     const lowerSymbol = symbol.toLowerCase();
     
     return {

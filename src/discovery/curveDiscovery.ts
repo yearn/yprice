@@ -36,7 +36,8 @@ export class CurveDiscovery {
         tokens.push(...onChainTokens);
       }
     } catch (error) {
-      logger.error(`Curve discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Curve discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return this.deduplicateTokens(tokens);
@@ -103,7 +104,7 @@ export class CurveDiscovery {
       }) as bigint;
       const maxPools = Math.min(Number(poolCount), 500); // Limit to prevent too many calls
 
-      logger.info(`Fetching ${maxPools} Curve pools from chain ${this.chainId}`);
+      logger.debug(`Fetching ${maxPools} Curve pools from chain ${this.chainId}`);
 
       // Batch fetch pool addresses using multicall
       const poolListContracts = [];
@@ -159,7 +160,8 @@ export class CurveDiscovery {
         }
       });
     } catch (error) {
-      logger.error(`Curve contract discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Curve contract discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;

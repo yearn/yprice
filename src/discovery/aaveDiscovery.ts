@@ -74,17 +74,18 @@ export class AAVEDiscovery {
       if (this.v3PoolAddress) {
         const v3Tokens = await this.discoverV3Tokens();
         tokens.push(...v3Tokens);
-        logger.info(`Chain ${this.chainId}: Discovered ${v3Tokens.length} AAVE V3 tokens`);
+        logger.debug(`Chain ${this.chainId}: Discovered ${v3Tokens.length} AAVE V3 tokens`);
       }
 
       // Discover AAVE V2 tokens
       if (this.v2PoolAddress) {
         const v2Tokens = await this.discoverV2Tokens();
         tokens.push(...v2Tokens);
-        logger.info(`Chain ${this.chainId}: Discovered ${v2Tokens.length} AAVE V2 tokens`);
+        logger.debug(`Chain ${this.chainId}: Discovered ${v2Tokens.length} AAVE V2 tokens`);
       }
     } catch (error) {
-      logger.error(`AAVE discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`AAVE discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return this.deduplicateTokens(tokens);
@@ -166,7 +167,8 @@ export class AAVEDiscovery {
         }
       });
     } catch (error) {
-      logger.error(`AAVE V3 discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`AAVE V3 discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;
@@ -201,7 +203,8 @@ export class AAVEDiscovery {
         // This would require additional contract calls
       }
     } catch (error) {
-      logger.error(`AAVE V2 discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`AAVE V2 discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;

@@ -104,7 +104,8 @@ export class VeloDiscovery {
         tokens.push(...onChainTokens);
       }
     } catch (error) {
-      logger.error(`Velodrome discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Velodrome discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return this.deduplicateTokens(tokens);
@@ -171,7 +172,7 @@ export class VeloDiscovery {
       const batchSize = 25;
       const maxBatches = 39; // Stop before batch 39 which fails on Optimism
       
-      logger.info(`Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId}`);
+      logger.debug(`Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId}`);
 
       for (let i = 0; i < maxBatches; i++) {
         try {
@@ -238,7 +239,7 @@ export class VeloDiscovery {
         }
       }
       const uniqueTokens = new Set(tokens.map(t => t.address.toLowerCase()));
-      logger.info(`Velodrome Sugar discovery completed: found ${uniqueTokens.size} unique tokens from ${tokens.length} total entries on chain ${this.chainId}`);
+      logger.debug(`Velodrome Sugar discovery completed: found ${uniqueTokens.size} unique tokens from ${tokens.length} total entries on chain ${this.chainId}`);
     } catch (error: any) {
       logger.error(`Velodrome contract discovery failed for chain ${this.chainId}:`, error.message || error);
     }

@@ -16,7 +16,8 @@ import { YearnVaultFetcher } from './yearnVault';
 import { ERC20Token, Price } from '../models';
 import { logger } from '../utils';
 import { priceCache } from '../utils/priceCache';
-import { partition, forEach, filter } from 'lodash';
+import { progressTracker } from '../utils/progressTracker';
+import { forEach, filter } from 'lodash';
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher();
@@ -32,40 +33,46 @@ export class PriceFetcherOrchestrator {
     tokens: ERC20Token[]
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>();
-    logger.info(`Fetching prices for ${tokens.length} tokens on chain ${chainId}`);
+    const progressKey = `fetch-${chainId}-${Date.now()}`;
+    
+    progressTracker.start(progressKey, 'Price Fetching', tokens.length, chainId);
     
     const symbolMap = new Map<string, string>();
     forEach(tokens, t => symbolMap.set(t.address.toLowerCase(), t.symbol));
 
+    // Cache check
     const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
     forEach(Array.from(cachedPrices.entries()), ([address, price]) => {
       priceMap.set(address, price);
     });
     
+    progressTracker.update(progressKey, priceMap.size, `${cachedPrices.size} from cache`);
+    
     let missingTokens = filter(tokens, t => !priceMap.has(t.address.toLowerCase()));
     
-    if (cachedPrices.size > 0) {
-      logger.info(`Cache returned ${cachedPrices.size} prices, ${missingTokens.length} remaining`);
+    if (missingTokens.length === 0) {
+      progressTracker.complete(progressKey);
+      return priceMap;
     }
-    
-    if (missingTokens.length === 0) return priceMap;
 
+    // On-chain oracles
+    progressTracker.update(progressKey, priceMap.size, 'Checking on-chain oracles...');
     const onChainPromises = [
       this.lensOracle.fetchPrices(chainId, missingTokens)
-        .catch(err => {
-          logger.error('Lens Oracle failed:', err);
+        .catch(() => {
+          progressTracker.error(progressKey);
           return new Map<string, Price>();
         }),
       ...(chainId === 10 || chainId === 8453 ? [
         this.velodrome.fetchPrices(chainId, missingTokens, priceMap)
-          .catch(err => {
-            logger.error('Velodrome failed:', err);
+          .catch(() => {
+            progressTracker.error(progressKey);
             return new Map<string, Price>();
           })
       ] : []),
       this.curveAmm.fetchPrices(chainId, missingTokens, priceMap)
-        .catch(err => {
-          logger.error('Curve AMM failed:', err);
+        .catch(() => {
+          progressTracker.error(progressKey);
           return new Map<string, Price>();
         })
     ];
@@ -80,22 +87,26 @@ export class PriceFetcherOrchestrator {
       });
     });
     
+    progressTracker.update(progressKey, priceMap.size, 'On-chain oracles complete');
+    
     missingTokens = filter(tokens, t => !priceMap.has(t.address.toLowerCase()));
     
     if (missingTokens.length === 0) {
-      logger.info(`On-chain oracles resolved all prices`);
+      progressTracker.complete(progressKey);
       return priceMap;
     }
 
+    // External APIs
+    progressTracker.update(progressKey, priceMap.size, 'Fetching from APIs...');
     const apiResults = await Promise.all([
       this.defillama.fetchPrices(chainId, missingTokens)
-        .catch(err => {
-          logger.error('DeFiLlama failed:', err);
+        .catch(() => {
+          progressTracker.error(progressKey);
           return new Map<string, Price>();
         }),
       this.coingecko.fetchPrices(chainId, missingTokens)
-        .catch(err => {
-          logger.error('CoinGecko failed:', err);
+        .catch(() => {
+          progressTracker.error(progressKey);
           return new Map<string, Price>();
         })
     ]);
@@ -109,9 +120,14 @@ export class PriceFetcherOrchestrator {
       });
     });
     
+    progressTracker.update(progressKey, priceMap.size, 'External APIs complete');
+    
     missingTokens = filter(tokens, t => !priceMap.has(t.address.toLowerCase()));
 
+    // Vault pricing
     if (missingTokens.length > 0) {
+      progressTracker.update(progressKey, priceMap.size, 'Checking vault prices...');
+      
       try {
         const erc4626Prices = await this.erc4626.fetchPrices(chainId, missingTokens, priceMap);
         forEach(Array.from(erc4626Prices.entries()), ([address, price]) => {
@@ -120,12 +136,8 @@ export class PriceFetcherOrchestrator {
             priceCache.set(chainId, address, price, symbolMap.get(address));
           }
         });
-        
-        if (erc4626Prices.size > 0) {
-          logger.info(`ERC4626 returned ${erc4626Prices.size} vault prices`);
-        }
       } catch (error) {
-        logger.error('ERC4626 fetcher failed:', error);
+        progressTracker.error(progressKey);
       }
     }
 
@@ -140,19 +152,16 @@ export class PriceFetcherOrchestrator {
             priceCache.set(chainId, address, price, symbolMap.get(address));
           }
         });
-        
-        if (vaultPrices.size > 0) {
-          logger.info(`Yearn Vault returned ${vaultPrices.size} vault prices`);
-        }
       } catch (error) {
-        logger.error('Yearn Vault fetcher failed:', error);
+        progressTracker.error(progressKey);
       }
     }
 
+    progressTracker.complete(progressKey);
+    
     const finalMissing = filter(tokens, t => !priceMap.has(t.address.toLowerCase()));
-    logger.info(`Total prices fetched: ${priceMap.size}/${tokens.length}`);
     if (finalMissing.length > 0) {
-      logger.debug(`Still missing prices for ${finalMissing.length} tokens`);
+      logger.debug(`Missing prices for ${finalMissing.length} tokens on chain ${chainId}`);
     }
     
     return priceMap;

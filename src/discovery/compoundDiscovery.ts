@@ -39,7 +39,7 @@ export class CompoundDiscovery {
         functionName: 'getAllMarkets',
       }) as Address[];
       
-      logger.info(`Chain ${this.chainId}: Found ${markets.length} Compound markets`);
+      logger.debug(`Chain ${this.chainId}: Found ${markets.length} Compound markets`);
 
       // Add all cTokens first
       for (const cTokenAddress of markets) {
@@ -77,9 +77,10 @@ export class CompoundDiscovery {
         }
       });
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Compound tokens`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Compound tokens`);
     } catch (error) {
-      logger.error(`Compound discovery failed for chain ${this.chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Compound discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return this.deduplicateTokens(tokens);

@@ -2,6 +2,7 @@ import NodeCache from 'node-cache';
 import { Price, ChainConfig, SUPPORTED_CHAINS } from '../models';
 import * as fs from 'fs';
 import * as path from 'path';
+import { logger } from '../utils';
 
 interface PriceCacheEntry extends Price {
   timestamp: number;
@@ -60,7 +61,8 @@ export class PriceStorage {
         }
       });
     } catch (error) {
-      console.error('Failed to load backup data:', error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Failed to load backup data: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
   }
 
@@ -176,7 +178,8 @@ export class PriceStorage {
       );
       fs.writeFileSync(backupFile, serializable);
     } catch (error) {
-      console.error(`Failed to persist backup for chain ${chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Failed to persist backup for chain ${chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
   }
 

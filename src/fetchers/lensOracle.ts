@@ -4,11 +4,11 @@ import { logger, getPublicClient } from '../utils';
 
 // Lens Price Oracle contract addresses by chain
 const LENS_ORACLE_ADDRESSES: Record<number, string> = {
-  1: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Ethereum
+  1: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Ethereum
   10: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Optimism
   137: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Polygon
-  250: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Fantom
-  42161: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Arbitrum
+  250: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Fantom
+  42161: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Arbitrum
 };
 
 // Lens Oracle ABI
@@ -79,10 +79,11 @@ export class LensOracleFetcher {
       });
 
       if (successCount > 0) {
-        logger.info(`Lens Oracle: Fetched ${successCount} prices for chain ${chainId}`);
+        logger.debug(`Lens Oracle: Fetched ${successCount} prices for chain ${chainId}`);
       }
     } catch (error) {
-      logger.error(`Lens Oracle fetcher failed for chain ${chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error);
+      logger.warn(`Lens Oracle fetch failed for chain ${chainId}: ${errorMsg}`);
     }
 
     return priceMap;

@@ -26,7 +26,7 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
   private readonly limit = pLimit(5);
   private lastRequestTime = 0;
   private readonly minRequestInterval = 1100;
-  private readonly BATCH_SIZE = 250;
+  private readonly BATCH_SIZE = 100; // Reduced to avoid 413 errors
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.COINGECKO_API_KEY;
@@ -49,11 +49,11 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
     const [, uncachedTokens] = partition(tokens, t => prices.has(t.address.toLowerCase()));
     
     if (uncachedTokens.length === 0) {
-      logger.info(`CoinGecko: All ${tokens.length} prices from cache`);
+      logger.debug(`CoinGecko: All ${tokens.length} prices from cache`);
       return prices;
     }
 
-    logger.info(`CoinGecko: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
+    logger.debug(`CoinGecko: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
 
     const tokenChunks = chunk(uncachedTokens, this.BATCH_SIZE);
     const results = await Promise.all(
@@ -150,7 +150,7 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
 
   async checkApiKeyStatus(): Promise<boolean> {
     if (!this.apiKey) {
-      logger.info('No CoinGecko API key configured');
+      logger.debug('No CoinGecko API key configured');
       return false;
     }
 
@@ -161,7 +161,7 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
       });
 
       if (response.data?.gecko_says) {
-        logger.info('CoinGecko API key is valid');
+        logger.debug('CoinGecko API key is valid');
         return true;
       }
     } catch (error) {

@@ -41,7 +41,7 @@ interface DefiLlamaFetcher {
 export class DefilllamaFetcher implements DefiLlamaFetcher {
   private readonly baseUrl = 'https://coins.llama.fi';
   private readonly limit = pLimit(10);
-  private readonly BATCH_SIZE = 200;
+  private readonly BATCH_SIZE = 100; // Reduced from 200 to avoid 413 errors
 
   async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {
     const prices = new Map<string, Price>();
@@ -64,11 +64,11 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     const [, uncachedTokens] = partition(tokens, t => prices.has(t.address.toLowerCase()));
     
     if (uncachedTokens.length === 0) {
-      logger.info(`DeFiLlama: All ${tokens.length} prices from cache`);
+      logger.debug(`DeFiLlama: All ${tokens.length} prices from cache`);
       return prices;
     }
 
-    logger.info(`DeFiLlama: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
+    logger.debug(`DeFiLlama: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
 
     const tokenChunks = chunk(uncachedTokens, this.BATCH_SIZE);
     const results = await Promise.all(
@@ -105,12 +105,17 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       const addresses = tokens.map(t => `${chainName}:${t.address}`).join(',');
       const url = `${this.baseUrl}/prices/current/${addresses}`;
       
+      // Log URL length for debugging 413 errors
+      if (url.length > 8000) {
+        logger.warn(`DeFiLlama URL length ${url.length} may cause issues`);
+      }
+      
       const majorTokens = tokens.filter(t => 
         ['WETH', 'USDC', 'USDT', 'DAI'].includes(t.symbol)
       );
       
       if (majorTokens.length > 0 && chainId === 1) {
-        logger.info(`Fetching prices for major tokens on Ethereum:`, 
+        logger.debug(`Fetching prices for major tokens on Ethereum:`, 
           majorTokens.map(t => `${t.symbol}: ${t.address}`)
         );
       }
@@ -148,11 +153,25 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           }
         });
       }
-    } catch (error) {
-      logger.error(`DeFiLlama fetch error for chain ${chainId}:`, error);
+    } catch (error: any) {
+      if (error.response?.status === 413) {
+        logger.error(`DeFiLlama 413 Payload Too Large for ${tokens.length} tokens, will retry with smaller batch`);
+        // If we get 413, try again with half the batch size
+        if (tokens.length > 10) {
+          const halfChunks = chunk(tokens, Math.floor(tokens.length / 2));
+          for (const halfChunk of halfChunks) {
+            const halfPrices = await this.fetchChunkPrices(chainName, chainId, halfChunk);
+            forEach(Array.from(halfPrices.entries()), ([address, price]) => {
+              prices.set(address, price);
+            });
+          }
+        }
+      } else {
+        logger.debug(`DeFiLlama fetch error for chain ${chainId}:`, error.message);
+      }
     }
 
-    logger.info(`DeFiLlama returned ${prices.size} prices`);
+    logger.debug(`DeFiLlama returned ${prices.size} prices`);
     return prices;
   }
 

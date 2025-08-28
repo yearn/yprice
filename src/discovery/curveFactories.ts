@@ -12,7 +12,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'stable-ng': '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',
     'twocrypto-ng': '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F',
     'tricrypto-ng': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-    'eywa': '0xab33A8A67545b5208B892bd7Db9B005E7d558cD5',
+    'eywa': '0xaB33A8a67545b5208B892bd7Db9B005E7d558cD5',
   },
   10: { // Optimism
     'stable': '0x2db0E83599a91b508Ac268a6197b8B14F5e72840',
@@ -23,7 +23,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
   137: { // Polygon
     'stable': '0x722272D36ef0Da72FF51c5A65Db7b870E2e8D4ee',
     'stable-ng': '0x1764ee18e8B3ccA4787249Ceb249356192594585',
-    'twocrypto-ng': '0x4a32De8c248533C28904b24B4cFCFE18E9F2ad01',
+    'twocrypto-ng': '0x4A32De8c248533C28904b24B4cFCFE18E9F2ad01',
     'tricrypto': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
   },
   250: { // Fantom
@@ -34,7 +34,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
   },
   42161: { // Arbitrum
     'stable': '0xb17b674D9c5CB2e441F8e196a2f048A81355d031',
-    'stable-ng': '0x2191718CD32d840B3574Fb6643Adb7FAe346A03C',
+    'stable-ng': '0x2191718Cd32D840B3574FB6643ADb7fae346a03C',
     'twocrypto-ng': '0x9c3B46C0Ceb5B9e304FCd6D88Fc50f7DD24B31Bc',
     'tricrypto': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
   },
@@ -59,7 +59,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
   43114: { // Avalanche
     'stable': '0xb17b674D9c5CB2e441F8e196a2f048A81355d031',
     'stable-ng': '0x1764ee18e8B3ccA4787249Ceb249356192594585',
-    'twocrypto-ng': '0x4a32De8c248533C28904b24B4cFCFE18E9F2ad01',
+    'twocrypto-ng': '0x4A32De8c248533C28904b24B4cFCFE18E9F2ad01',
     'tricrypto': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
   },
 };
@@ -91,10 +91,10 @@ export class CurveFactoriesDiscovery {
 
     for (const [factoryType, factoryAddress] of Object.entries(this.factories)) {
       try {
-        logger.info(`Chain ${this.chainId}: Discovering Curve ${factoryType} factory pools from ${factoryAddress}`);
+        logger.debug(`Chain ${this.chainId}: Discovering Curve ${factoryType} factory pools from ${factoryAddress}`);
         const factoryTokens = await this.discoverFromFactory(factoryAddress, factoryType);
         tokens.push(...factoryTokens);
-        logger.info(`Chain ${this.chainId}: Found ${factoryTokens.length} tokens from Curve ${factoryType} factory`);
+        logger.debug(`Chain ${this.chainId}: Found ${factoryTokens.length} tokens from Curve ${factoryType} factory`);
       } catch (error: any) {
         logger.warn(`Chain ${this.chainId}: Failed to discover from Curve ${factoryType} factory:`, error.message);
       }
@@ -116,7 +116,7 @@ export class CurveFactoriesDiscovery {
       }) as bigint;
       const count = Number(poolCount);
       
-      logger.info(`Chain ${this.chainId}: Curve ${factoryType} factory has ${count} pools`);
+      logger.debug(`Chain ${this.chainId}: Curve ${factoryType} factory has ${count} pools`);
 
       // First, batch fetch all pool addresses
       const poolListContracts = [];
@@ -142,7 +142,7 @@ export class CurveFactoriesDiscovery {
         });
       }
 
-      logger.info(`Chain ${this.chainId}: Found ${poolAddresses.length} pools from Curve ${factoryType} factory`);
+      logger.debug(`Chain ${this.chainId}: Found ${poolAddresses.length} pools from Curve ${factoryType} factory`);
 
       // Batch fetch LP tokens for all pools
       const lpTokenContracts = poolAddresses.map(poolAddress => ({
@@ -239,7 +239,8 @@ export class CurveFactoriesDiscovery {
         });
       }
     } catch (error) {
-      logger.error(`Error discovering from Curve factory ${factoryAddress}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Error discovering from Curve factory ${factoryAddress}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;

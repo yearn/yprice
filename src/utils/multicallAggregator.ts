@@ -1,4 +1,3 @@
-import { PublicClient } from 'viem';
 import { getPublicClient } from './viemClients';
 import { logger } from './logger';
 import pLimit from 'p-limit';
@@ -206,10 +205,10 @@ export class MulticallAggregator {
         batch.forEach((req, index) => {
           const result = results[index];
           
-          if (result.status === 'success') {
+          if (result && result.status === 'success') {
             req.resolver?.(result.result);
           } else {
-            req.rejecter?.(result.error || new Error('Multicall failed'));
+            req.rejecter?.(result?.error || new Error('Multicall failed'));
           }
         });
 
@@ -312,6 +311,18 @@ export async function batchReadContracts<T = any>(
     functionName: string;
     args?: any[];
   }>
-): Promise<T[]> {
-  return multicallAggregator.queueCalls<T>(chainId, contracts);
+): Promise<Array<{ status: 'success' | 'failure'; result?: T; error?: any }>> {
+  try {
+    const results = await multicallAggregator.queueCalls<T>(chainId, contracts);
+    return results.map(result => ({
+      status: 'success' as const,
+      result
+    }));
+  } catch (error) {
+    // If the entire batch fails, return failures for all
+    return contracts.map(() => ({
+      status: 'failure' as const,
+      error
+    }));
+  }
 }

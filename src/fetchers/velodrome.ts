@@ -139,7 +139,7 @@ export class VelodromeFetcher {
       const maxBatches = 39; // Stop before batch 39 which fails
       const allPools: SugarPoolData[] = [];
       
-      logger.info(`[Velodrome] Starting to fetch pools for chain ${chainId}`);
+      logger.debug(`[Velodrome] Starting to fetch pools for chain ${chainId}`);
       
       for (let i = 0; i < maxBatches; i++) {
         try {
@@ -177,7 +177,7 @@ export class VelodromeFetcher {
         return priceMap;
       }
 
-      logger.info(`[Velodrome] Found ${allPools.length} pools total`);
+      logger.debug(`[Velodrome] Found ${allPools.length} pools total`);
 
       // Collect unique tokens from pools
       const uniqueTokens = new Set<string>();
@@ -192,7 +192,7 @@ export class VelodromeFetcher {
         }
       }
       
-      logger.info(`[Velodrome] Found ${lpTokens.size} LP tokens and ${uniqueTokens.size} unique component tokens`)
+      logger.debug(`[Velodrome] Found ${lpTokens.size} LP tokens and ${uniqueTokens.size} unique component tokens`)
 
       // Get prices from Sugar Oracle
       const tokenAddresses = Array.from(uniqueTokens);
@@ -205,7 +205,7 @@ export class VelodromeFetcher {
         tokenBatches.push(tokenAddresses.slice(i, i + maxTokensPerCall));
       }
       
-      logger.info(`[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches)`);
+      logger.debug(`[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches)`);
       
       const allTokenPrices = new Map<string, bigint>();
       
@@ -245,7 +245,7 @@ export class VelodromeFetcher {
         }
       }
       
-      logger.info(`[Velodrome] Sugar Oracle returned ${allTokenPrices.size} total prices`);
+      logger.debug(`[Velodrome] Sugar Oracle returned ${allTokenPrices.size} total prices`);
 
       // Create price map for tokens
       const tokenPriceMap = new Map<string, bigint>();
@@ -256,7 +256,7 @@ export class VelodromeFetcher {
           validPriceCount++;
         }
       }
-      logger.info(`[Velodrome] ${validPriceCount} tokens have valid prices from Oracle`)
+      logger.debug(`[Velodrome] ${validPriceCount} tokens have valid prices from Oracle`)
 
       // Special case for USDC (treat as $1 if no price)
       const usdcAddress = '0x7f5c764cbc14f9669b88837ca1490cca17c31607';
@@ -266,7 +266,7 @@ export class VelodromeFetcher {
       }
 
       // CRITICAL OPTIMIZATION: Use multicall to fetch all decimals at once
-      logger.info(`[Velodrome] Fetching decimals for ${uniqueTokens.size} tokens using multicall`);
+      logger.debug(`[Velodrome] Fetching decimals for ${uniqueTokens.size} tokens using multicall`);
       
       const decimalsContracts = Array.from(uniqueTokens).map(address => ({
         address: address as Address,
@@ -291,7 +291,7 @@ export class VelodromeFetcher {
         }
       });
       
-      logger.info(`[Velodrome] Fetched decimals for ${decimalsFetched}/${uniqueTokens.size} tokens via multicall`)
+      logger.debug(`[Velodrome] Fetched decimals for ${decimalsFetched}/${uniqueTokens.size} tokens via multicall`)
 
       // Calculate LP token prices
       let lpPricesCalculated = 0;
@@ -356,11 +356,11 @@ export class VelodromeFetcher {
         }
       }
 
-      logger.info(`[Velodrome] Summary:`);
-      logger.info(`  - LP prices calculated: ${lpPricesCalculated}`);
-      logger.info(`  - LP skipped (no component price): ${lpSkippedNoPrice}`);
-      logger.info(`  - LP skipped (no liquidity): ${lpSkippedNoLiquidity}`);
-      logger.info(`  - Total prices returned: ${priceMap.size}`);
+      logger.debug(`[Velodrome] Summary:`);
+      logger.debug(`  - LP prices calculated: ${lpPricesCalculated}`);
+      logger.debug(`  - LP skipped (no component price): ${lpSkippedNoPrice}`);
+      logger.debug(`  - LP skipped (no liquidity): ${lpSkippedNoLiquidity}`);
+      logger.debug(`  - Total prices returned: ${priceMap.size}`);
     } catch (error) {
       logger.error(`Velodrome fetcher failed for chain ${chainId}:`, error);
     }

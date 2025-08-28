@@ -1,5 +1,6 @@
 export * from './helpers';
 export * from './logger';
-export * from './viemClients';
+export { getPublicClient } from './viemClients';
 export * from './priceCache';
-export * from './multicallAggregator';
+export { batchReadContracts } from './multicallAggregator';
+export * from './progressTracker';

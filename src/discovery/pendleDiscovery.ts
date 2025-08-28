@@ -101,7 +101,7 @@ export class PendleDiscovery {
       return tokens; // No Pendle on this chain
     }
 
-    logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle tokens total`);
+    logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle tokens total`);
     return this.deduplicateTokens(tokens);
   }
 
@@ -172,7 +172,7 @@ export class PendleDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle assets`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle assets`);
     } catch (error: any) {
       logger.warn(`Pendle assets discovery failed for chain ${this.chainId}:`, error.message);
     }
@@ -235,7 +235,7 @@ export class PendleDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle market tokens`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle market tokens`);
     } catch (error: any) {
       logger.warn(`Pendle markets discovery failed for chain ${this.chainId}:`, error.message);
     }

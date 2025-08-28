@@ -74,7 +74,7 @@ export class TokenListDiscovery {
     }
 
     const tokens = Array.from(allTokens.values());
-    logger.info(`Token Lists: Discovered ${tokens.length} tokens for chain ${chainId}`);
+    logger.debug(`Token Lists: Discovered ${tokens.length} tokens for chain ${chainId}`);
     
     return tokens;
   }
@@ -130,11 +130,12 @@ export class TokenListDiscovery {
           chainId: chainId,
         }));
 
-      logger.info(`Token List ${name}: Found ${validTokens.length} tokens for chain ${chainId}`);
+      logger.debug(`Token List ${name}: Found ${validTokens.length} tokens for chain ${chainId}`);
       return validTokens;
       
     } catch (error) {
-      logger.error(`Token List ${name} fetch failed for chain ${chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Token List ${name} fetch failed for chain ${chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
       return [];
     }
   }

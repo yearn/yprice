@@ -54,7 +54,7 @@ export class BalancerDiscovery {
     const apiTokens = await this.discoverFromAPI();
     tokens.push(...apiTokens);
 
-    logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`);
+    logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`);
     return this.deduplicateTokens(tokens);
   }
 
@@ -123,7 +123,7 @@ export class BalancerDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer subgraph`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer subgraph`);
     } catch (error: any) {
       logger.warn(`Balancer subgraph discovery failed for chain ${this.chainId}:`, error.message);
     }
@@ -186,7 +186,7 @@ export class BalancerDiscovery {
         }
       }
 
-      logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer API`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer API`);
     } catch (error: any) {
       // API might not be available for all chains
       logger.debug(`Balancer API discovery failed for chain ${this.chainId}:`, error.message);

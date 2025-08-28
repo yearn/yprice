@@ -26,11 +26,11 @@ export class TokenDiscoveryService {
     
     // Use cache if available and not forcing refresh
     if (!forceRefresh && this.lastDiscovery && (now - this.lastDiscovery) < this.discoveryInterval) {
-      logger.info('Using cached discovered tokens');
+      logger.debug('Using cached discovered tokens');
       return this.tokenCache;
     }
 
-    logger.info('Starting token discovery across all chains...');
+    logger.info('🔍 Starting token discovery across all chains...');
     this.discoveredTokens.clear();
     this.tokenCache.clear();
 
@@ -44,11 +44,15 @@ export class TokenDiscoveryService {
     await Promise.all(discoveryPromises);
 
     // Convert discovered tokens to ERC20Token format
+    let totalTokens = 0;
     for (const [chainId, tokens] of this.discoveredTokens.entries()) {
       const erc20Tokens = this.convertToERC20Tokens(chainId, tokens);
       this.tokenCache.set(chainId, erc20Tokens);
-      logger.info(`Chain ${chainId}: Discovered ${erc20Tokens.length} unique tokens`);
+      totalTokens += erc20Tokens.length;
+      logger.debug(`Chain ${chainId}: Discovered ${erc20Tokens.length} unique tokens`);
     }
+    
+    logger.info(`✅ Token discovery complete: ${totalTokens} tokens across ${this.tokenCache.size} chains`);
 
     this.lastDiscovery = now;
     return this.tokenCache;
@@ -64,7 +68,7 @@ export class TokenDiscoveryService {
       // 0. ALWAYS add core tokens first (WETH, USDC, USDT, DAI, etc)
       const coreTokens = getCoreTokensForChain(chainId);
       tokens.push(...coreTokens);
-      logger.info(`Chain ${chainId}: Added ${coreTokens.length} core tokens`);
+      logger.info(`Chain ${chainId}: Discovering tokens... (${tokens.length} found)`);
 
       // 1. Add extra configured tokens
       if (config.extraTokens) {
@@ -75,7 +79,7 @@ export class TokenDiscoveryService {
             source: 'configured',
           });
         }
-        logger.info(`Chain ${chainId}: Added ${config.extraTokens.length} configured tokens`);
+        logger.info(`Chain ${chainId}: Discovering tokens... (${tokens.length} found)`);
       }
 
       // 2. Discover Yearn vaults
@@ -83,7 +87,9 @@ export class TokenDiscoveryService {
         const yearnDiscovery = new YearnDiscovery(chainId, rpcUrl);
         const yearnTokens = await yearnDiscovery.discoverTokens();
         tokens.push(...yearnTokens);
-        logger.info(`Chain ${chainId}: Discovered ${yearnTokens.length} Yearn tokens`);
+        if (yearnTokens.length > 0) {
+          logger.info(`Chain ${chainId}: Discovering tokens... (${tokens.length} found)`);
+        }
       }
 
       // 3. Discover Curve pools from API
@@ -97,7 +103,7 @@ export class TokenDiscoveryService {
         
         const curveTokens = await curveDiscovery.discoverTokens();
         tokens.push(...curveTokens);
-        logger.info(`Chain ${chainId}: Discovered ${curveTokens.length} Curve tokens from API`);
+        logger.debug(`Chain ${chainId}: Discovered ${curveTokens.length} Curve tokens from API`);
       }
 
       // 3b. Discover ALL Curve factory pools (comprehensive)
@@ -106,7 +112,7 @@ export class TokenDiscoveryService {
         const curveFactoryTokens = await curveFactoriesDiscovery.discoverTokens();
         tokens.push(...curveFactoryTokens);
         if (curveFactoryTokens.length > 0) {
-          logger.info(`Chain ${chainId}: Discovered ${curveFactoryTokens.length} Curve factory tokens`);
+          logger.debug(`Chain ${chainId}: Discovered ${curveFactoryTokens.length} Curve factory tokens`);
         }
       }
 
@@ -121,7 +127,7 @@ export class TokenDiscoveryService {
         
         const veloTokens = await veloDiscovery.discoverTokens();
         tokens.push(...veloTokens);
-        logger.info(`Chain ${chainId}: Discovered ${veloTokens.length} Velodrome/Aerodrome tokens`);
+        logger.debug(`Chain ${chainId}: Discovered ${veloTokens.length} Velodrome/Aerodrome tokens`);
       }
 
       // 5. Load from token lists (Uniswap, 1inch, CoinGecko, etc.)
@@ -131,14 +137,16 @@ export class TokenDiscoveryService {
         chainId: t.chainId,
         source: 'tokenlist',
       })));
-      logger.info(`Chain ${chainId}: Discovered ${tokenListTokens.length} tokens from token lists`);
+      if (tokenListTokens.length > 0) {
+        logger.info(`Chain ${chainId}: Discovering tokens... (${tokens.length} found)`);
+      }
 
       // 6. Discover Gamma Protocol tokens
       const gammaDiscovery = new GammaDiscovery(chainId);
       const gammaTokens = await gammaDiscovery.discoverTokens();
       tokens.push(...gammaTokens);
       if (gammaTokens.length > 0) {
-        logger.info(`Chain ${chainId}: Discovered ${gammaTokens.length} Gamma tokens`);
+        logger.debug(`Chain ${chainId}: Discovered ${gammaTokens.length} Gamma tokens`);
       }
 
       // 7. Discover Pendle tokens
@@ -146,7 +154,7 @@ export class TokenDiscoveryService {
       const pendleTokens = await pendleDiscovery.discoverTokens();
       tokens.push(...pendleTokens);
       if (pendleTokens.length > 0) {
-        logger.info(`Chain ${chainId}: Discovered ${pendleTokens.length} Pendle tokens`);
+        logger.debug(`Chain ${chainId}: Discovered ${pendleTokens.length} Pendle tokens`);
       }
 
       // 8. Discover AAVE tokens
@@ -161,7 +169,7 @@ export class TokenDiscoveryService {
         const aaveTokens = await aaveDiscovery.discoverTokens();
         tokens.push(...aaveTokens);
         if (aaveTokens.length > 0) {
-          logger.info(`Chain ${chainId}: Discovered ${aaveTokens.length} AAVE tokens`);
+          logger.debug(`Chain ${chainId}: Discovered ${aaveTokens.length} AAVE tokens`);
         }
       }
 
@@ -176,7 +184,7 @@ export class TokenDiscoveryService {
         const compoundTokens = await compoundDiscovery.discoverTokens();
         tokens.push(...compoundTokens);
         if (compoundTokens.length > 0) {
-          logger.info(`Chain ${chainId}: Discovered ${compoundTokens.length} Compound tokens`);
+          logger.debug(`Chain ${chainId}: Discovered ${compoundTokens.length} Compound tokens`);
         }
       }
 
@@ -185,7 +193,7 @@ export class TokenDiscoveryService {
       const uniswapTokens = await uniswapDiscovery.discoverTokens();
       tokens.push(...uniswapTokens);
       if (uniswapTokens.length > 0) {
-        logger.info(`Chain ${chainId}: Discovered ${uniswapTokens.length} Uniswap tokens`);
+        logger.debug(`Chain ${chainId}: Discovered ${uniswapTokens.length} Uniswap tokens`);
       }
 
       // 11. Discover Balancer tokens
@@ -193,13 +201,16 @@ export class TokenDiscoveryService {
       const balancerTokens = await balancerDiscovery.discoverTokens();
       tokens.push(...balancerTokens);
       if (balancerTokens.length > 0) {
-        logger.info(`Chain ${chainId}: Discovered ${balancerTokens.length} Balancer tokens`);
+        logger.debug(`Chain ${chainId}: Discovered ${balancerTokens.length} Balancer tokens`);
       }
 
       // Store discovered tokens
-      this.discoveredTokens.set(chainId, this.deduplicateTokens(tokens));
+      const uniqueTokens = this.deduplicateTokens(tokens);
+      this.discoveredTokens.set(chainId, uniqueTokens);
+      logger.info(`Chain ${chainId}: Discovery complete (${uniqueTokens.length} unique tokens)`);
     } catch (error) {
-      logger.error(`Token discovery failed for chain ${chainId}:`, error);
+      const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      logger.warn(`Token discovery failed for chain ${chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
       // Store empty array on error to prevent retrying too frequently
       this.discoveredTokens.set(chainId, []);
     }
