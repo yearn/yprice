@@ -1,18 +1,9 @@
 import axios from 'axios';
 import pLimit from 'p-limit';
-import { 
-  ERC20Token, 
-  Price, 
-  LlamaPrice, 
-  PriceSource
-} from '../models';
-import { 
-  parseUnits, 
-  addressEquals, 
-  chunk,
-  logger 
-} from '../utils';
+import { ERC20Token, Price, LlamaPrice, PriceSource } from '../models';
+import { parseUnits, addressEquals, chunk, logger } from '../utils';
 import { priceCache } from '../utils/priceCache';
+import { partition, forEach, find, reduce } from 'lodash';
 
 const LLAMA_CHAIN_NAMES: Record<number, string> = {
   1: 'ethereum',
@@ -49,8 +40,8 @@ interface DefiLlamaFetcher {
 
 export class DefilllamaFetcher implements DefiLlamaFetcher {
   private readonly baseUrl = 'https://coins.llama.fi';
-  private readonly limit = pLimit(10); // Increased concurrency
-  private readonly BATCH_SIZE = 200; // Increased from 50 to 200
+  private readonly limit = pLimit(10);
+  private readonly BATCH_SIZE = 200;
 
   async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {
     const prices = new Map<string, Price>();
@@ -65,14 +56,12 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       return this.fetchKatanaPrices(tokens);
     }
 
-    // Check cache first
     const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
-    cachedPrices.forEach((price, address) => {
+    forEach(Array.from(cachedPrices.entries()), ([address, price]) => {
       prices.set(address, price);
     });
 
-    // Filter out tokens that are already cached
-    const uncachedTokens = tokens.filter(t => !prices.has(t.address.toLowerCase()));
+    const [, uncachedTokens] = partition(tokens, t => prices.has(t.address.toLowerCase()));
     
     if (uncachedTokens.length === 0) {
       logger.info(`DeFiLlama: All ${tokens.length} prices from cache`);
@@ -81,7 +70,6 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
 
     logger.info(`DeFiLlama: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
 
-    // Split into larger chunks and fetch in parallel
     const tokenChunks = chunk(uncachedTokens, this.BATCH_SIZE);
     const results = await Promise.all(
       tokenChunks.map(chunk => 
@@ -89,14 +77,14 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       )
     );
 
-    // Combine results and cache them
-    const symbolMap = new Map<string, string>();
-    tokens.forEach(t => symbolMap.set(t.address.toLowerCase(), t.symbol));
+    const symbolMap = reduce(tokens, (acc, t) => {
+      acc.set(t.address.toLowerCase(), t.symbol);
+      return acc;
+    }, new Map<string, string>());
 
-    results.forEach(chunkPrices => {
-      chunkPrices.forEach((price, address) => {
+    forEach(results, chunkPrices => {
+      forEach(Array.from(chunkPrices.entries()), ([address, price]) => {
         prices.set(address, price);
-        // Cache the new price
         priceCache.set(chainId, address, price, symbolMap.get(address));
       });
     });
@@ -117,10 +105,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       const addresses = tokens.map(t => `${chainName}:${t.address}`).join(',');
       const url = `${this.baseUrl}/prices/current/${addresses}`;
       
-      // Log major tokens being requested
       const majorTokens = tokens.filter(t => 
-        t.symbol === 'WETH' || t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'DAI'
+        ['WETH', 'USDC', 'USDT', 'DAI'].includes(t.symbol)
       );
+      
       if (majorTokens.length > 0 && chainId === 1) {
         logger.info(`Fetching prices for major tokens on Ethereum:`, 
           majorTokens.map(t => `${t.symbol}: ${t.address}`)
@@ -129,13 +117,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       
       const response = await axios.get<LlamaPrice>(url, {
         timeout: 10000,
-        headers: {
-          'User-Agent': 'yearn-pricing-service'
-        }
+        headers: { 'User-Agent': 'yearn-pricing-service' }
       });
 
       if (response.data?.coins) {
-        // Log if we got prices for major tokens
         if (chainId === 1) {
           const receivedAddresses = Object.keys(response.data.coins).map(k => k.split(':')[1]?.toLowerCase());
           const majorMissing = majorTokens.filter(t => 
@@ -148,10 +133,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           }
         }
         
-        Object.entries(response.data.coins).forEach(([key, data]) => {
+        forEach(Object.entries(response.data.coins), ([key, data]) => {
           const address = key.split(':')[1];
           if (address && data.price > 0) {
-            const token = tokens.find(t => addressEquals(t.address, address));
+            const token = find(tokens, t => addressEquals(t.address, address));
             if (token) {
               prices.set(token.address.toLowerCase(), {
                 address: token.address,
@@ -181,10 +166,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
 
     const mainnetPrices = await this.fetchChunkPrices('ethereum', 1, mainnetTokens);
     
-    tokens.forEach(token => {
+    forEach(tokens, token => {
       const mainnetName = KATANA_TOKEN_NAMES_TO_MAINNET[token.name];
       if (mainnetName) {
-        const mainnetToken = mainnetTokens.find(t => t.name === mainnetName);
+        const mainnetToken = find(mainnetTokens, t => t.name === mainnetName);
         if (mainnetToken) {
           const price = mainnetPrices.get(mainnetToken.address.toLowerCase());
           if (price) {
@@ -201,12 +186,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
   }
 
   private async getMainnetTokensForKatana(tokens: ERC20Token[]): Promise<ERC20Token[]> {
-    const mainnetTokens: ERC20Token[] = [];
-    
-    for (const token of tokens) {
+    return reduce(tokens, (acc: ERC20Token[], token) => {
       const mainnetName = KATANA_TOKEN_NAMES_TO_MAINNET[token.name];
       if (mainnetName) {
-        mainnetTokens.push({
+        acc.push({
           address: '0x0000000000000000000000000000000000000000',
           symbol: token.symbol,
           name: mainnetName,
@@ -214,9 +197,8 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           chainId: 1
         });
       }
-    }
-
-    return mainnetTokens;
+      return acc;
+    }, []);
   }
 
   private handleAjnaTokens(
@@ -227,7 +209,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     const ajnaAddress = AJNA_TOKENS[chainId];
     if (!ajnaAddress) return;
 
-    const ajnaToken = tokens.find(t => addressEquals(t.address, ajnaAddress));
+    const ajnaToken = find(tokens, t => addressEquals(t.address, ajnaAddress));
     if (!ajnaToken || prices.has(ajnaToken.address.toLowerCase())) return;
 
     const mainnetAjnaAddress = AJNA_TOKENS[1];
@@ -238,9 +220,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
         const url = `${this.baseUrl}/prices/current/ethereum:${mainnetAjnaAddress}`;
         const response = await axios.get<LlamaPrice>(url, {
           timeout: 10000,
-          headers: {
-            'User-Agent': 'yearn-pricing-service'
-          }
+          headers: { 'User-Agent': 'yearn-pricing-service' }
         });
 
         const data = response.data?.coins[`ethereum:${mainnetAjnaAddress}`];

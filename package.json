@@ -22,13 +22,15 @@
   "author": "Yearn Finance",
   "license": "MIT",
   "dependencies": {
+    "@types/lodash": "^4.17.20",
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
-    "viem": "^2.21.0",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
+    "lodash": "^4.17.21",
     "node-cache": "^5.1.2",
     "p-limit": "^4.0.0",
+    "viem": "^2.21.0",
     "winston": "^3.11.0"
   },
   "devDependencies": {
