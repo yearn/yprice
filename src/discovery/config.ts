@@ -27,7 +27,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Optimism
   10: {
     chainId: 10,
-    veloSugarAddress: '0x395942c2049604a314d39f370Dfb8D87AAC89e16',
+    veloSugarAddress: '0x3e532BC1998584fe18e357B5187897ad0110ED3A', // Updated to ydaemon's address
     veloApiUrl: 'https://api.velodrome.finance/api/v3/pools',
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',

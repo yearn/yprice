@@ -1,215 +1,143 @@
 import axios from 'axios';
-import { TokenInfo } from './types';
+import { ERC20Token } from '../models';
 import { logger } from '../utils';
 
 interface TokenListToken {
-  chainId: number;
   address: string;
-  name: string;
   symbol: string;
-  decimals: number;
-  logoURI?: string;
-}
-
-interface TokenList {
   name: string;
-  tokens: TokenListToken[];
+  decimals: number;
+  chainId?: number;
 }
 
-// Popular token list URLs - currently using CHAIN_TOKEN_LISTS below
-// const TOKEN_LIST_URLS: Record<string, string> = {
-//   'uniswap': 'https://tokens.coingecko.com/uniswap/all.json',
-//   'oneInch': 'https://tokens.1inch.io/v1.2/1',
-//   'coingecko': 'https://tokens.coingecko.com/ethereum/all.json',
-//   'gemini': 'https://www.gemini.com/uniswap/manifest.json',
-//   'compound': 'https://raw.githubusercontent.com/compound-finance/token-list/master/compound.tokenlist.json',
-//   'aave': 'https://tokenlist.aave.eth.link',
-//   'optimism': 'https://static.optimism.io/optimism.tokenlist.json',
-//   'arbitrum': 'https://bridge.arbitrum.io/token-list-42161.json',
-//   'polygon': 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json',
-// };
 
-// Chain-specific token list URLs
-const CHAIN_TOKEN_LISTS: Record<number, string[]> = {
+// Token list URLs by chain
+const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
+  // Ethereum
   1: [
-    'https://tokens.coingecko.com/ethereum/all.json',
-    'https://tokens.1inch.io/v1.2/1',
-    'https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json',
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/ethereum/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/1' },
+    { name: 'Uniswap', url: 'https://gateway.ipfs.io/ipns/tokens.uniswap.org' },
   ],
+  // Optimism
   10: [
-    'https://static.optimism.io/optimism.tokenlist.json',
-    'https://tokens.coingecko.com/optimism/all.json',
+    { name: 'Optimism Official', url: 'https://static.optimism.io/optimism.tokenlist.json' },
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/optimism/all.json' },
   ],
-  137: [
-    'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json',
-    'https://tokens.coingecko.com/polygon-pos/all.json',
-  ],
-  42161: [
-    'https://bridge.arbitrum.io/token-list-42161.json',
-    'https://tokens.coingecko.com/arbitrum-one/all.json',
-  ],
-  8453: [
-    'https://tokens.coingecko.com/base/all.json',
-  ],
+  // Gnosis
   100: [
-    'https://tokens.honeyswap.org',
-    'https://tokens.coingecko.com/xdai/all.json',
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/xdai/all.json' },
+    { name: 'Honeyswap', url: 'https://tokens.honeyswap.org' },
   ],
+  // Polygon
+  137: [
+    { name: 'Polygon Official', url: 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json' },
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/polygon-pos/all.json' },
+  ],
+  // Fantom
   250: [
-    'https://tokens.coingecko.com/fantom/all.json',
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/fantom/all.json' },
+  ],
+  // Base
+  8453: [
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/base/all.json' },
+  ],
+  // Arbitrum
+  42161: [
+    { name: 'Arbitrum Bridge', url: 'https://bridge.arbitrum.io/token-list-42161.json' },
+    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/arbitrum-one/all.json' },
   ],
 };
 
 export class TokenListDiscovery {
-  private chainId: number;
-  private cache: Map<string, TokenList> = new Map();
-
-  constructor(chainId: number) {
-    this.chainId = chainId;
-  }
-
-  async discoverTokens(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-    const urls = CHAIN_TOKEN_LISTS[this.chainId] || [];
-
-    for (const url of urls) {
-      try {
-        const listTokens = await this.fetchTokenList(url);
-        tokens.push(...listTokens);
-        logger.info(`Chain ${this.chainId}: Loaded ${listTokens.length} tokens from ${url}`);
-      } catch (error: any) {
-        logger.debug(`Failed to load token list from ${url}:`, error.message);
-      }
+  async discoverTokens(chainId: number): Promise<ERC20Token[]> {
+    const lists = TOKEN_LISTS[chainId];
+    if (!lists || lists.length === 0) {
+      return [];
     }
 
-    // Also try to load CoinGecko comprehensive list
-    try {
-      const coingeckoTokens = await this.fetchCoinGeckoTokens();
-      tokens.push(...coingeckoTokens);
-      logger.info(`Chain ${this.chainId}: Loaded ${coingeckoTokens.length} tokens from CoinGecko`);
-    } catch (error: any) {
-      logger.debug(`Failed to load CoinGecko tokens:`, error.message);
-    }
-
-    return this.deduplicateTokens(tokens);
-  }
-
-  private async fetchTokenList(url: string): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-
-    try {
-      // Check cache first
-      if (this.cache.has(url)) {
-        const cached = this.cache.get(url)!;
-        return this.convertTokenList(cached);
-      }
-
-      const response = await axios.get<TokenList>(url, {
-        timeout: 10000,
-        headers: { 'User-Agent': 'yearn-pricing-service' }
-      });
-
-      if (response.data?.tokens) {
-        this.cache.set(url, response.data);
-        return this.convertTokenList(response.data);
-      }
-    } catch (error) {
-      // Try alternative format (some lists return array directly)
-      try {
-        const response = await axios.get<TokenListToken[]>(url, {
-          timeout: 10000,
-          headers: { 'User-Agent': 'yearn-pricing-service' }
-        });
-
-        if (Array.isArray(response.data)) {
-          const tokenList = { name: url, tokens: response.data };
-          this.cache.set(url, tokenList);
-          return this.convertTokenList(tokenList);
-        }
-      } catch {
-        // Failed both formats
-      }
-    }
-
-    return tokens;
-  }
-
-  private async fetchCoinGeckoTokens(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
+    const allTokens: Map<string, ERC20Token> = new Map();
     
-    // Map chain ID to CoinGecko platform
-    const platformMap: Record<number, string> = {
-      1: 'ethereum',
-      10: 'optimism',
-      137: 'polygon-pos',
-      250: 'fantom',
-      42161: 'arbitrum-one',
-      100: 'xdai',
-      8453: 'base',
-    };
-
-    const platform = platformMap[this.chainId];
-    if (!platform) return tokens;
-
-    try {
-      const url = `https://tokens.coingecko.com/${platform}/all.json`;
-      const response = await axios.get<TokenList>(url, {
-        timeout: 10000,
-        headers: { 'User-Agent': 'yearn-pricing-service' }
-      });
-
-      if (response.data?.tokens) {
-        for (const token of response.data.tokens) {
-          if (token.chainId === this.chainId) {
-            tokens.push({
-              address: token.address.toLowerCase(),
-              chainId: this.chainId,
-              name: token.name,
-              symbol: token.symbol,
-              decimals: token.decimals,
-              source: 'token-list',
-            });
+    // Fetch all token lists in parallel
+    const promises = lists.map(list => this.fetchTokenList(list.name, list.url, chainId));
+    const results = await Promise.allSettled(promises);
+    
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        for (const token of result.value) {
+          const key = token.address.toLowerCase();
+          if (!allTokens.has(key)) {
+            allTokens.set(key, token);
           }
         }
       }
-    } catch (error: any) {
-      // Silently fail, token lists are optional
     }
 
+    const tokens = Array.from(allTokens.values());
+    logger.info(`Token Lists: Discovered ${tokens.length} tokens for chain ${chainId}`);
+    
     return tokens;
   }
 
-  private convertTokenList(tokenList: TokenList): TokenInfo[] {
-    const tokens: TokenInfo[] = [];
+  private async fetchTokenList(
+    name: string, 
+    url: string, 
+    chainId: number
+  ): Promise<ERC20Token[]> {
+    try {
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (compatible; YearnPricing/1.0)',
+        },
+      });
 
-    for (const token of tokenList.tokens) {
-      if (token.chainId === this.chainId) {
-        tokens.push({
+      const data = response.data;
+      let tokens: TokenListToken[] = [];
+      
+      // Handle different response formats
+      if (Array.isArray(data)) {
+        // Direct array of tokens (1inch format)
+        tokens = data;
+      } else if (data.tokens && Array.isArray(data.tokens)) {
+        // Standard token list format
+        tokens = data.tokens;
+      } else if (data.result && Array.isArray(data.result)) {
+        // Result wrapper format
+        tokens = data.result;
+      }
+
+      // Filter and map tokens
+      const validTokens = tokens
+        .filter(token => {
+          // Filter by chainId if specified in token
+          if (token.chainId && token.chainId !== chainId) {
+            return false;
+          }
+          // Basic validation
+          return token.address && 
+                 token.symbol && 
+                 token.decimals !== undefined &&
+                 token.decimals >= 0 && 
+                 token.decimals <= 255;
+        })
+        .map(token => ({
           address: token.address.toLowerCase(),
-          chainId: this.chainId,
-          name: token.name,
           symbol: token.symbol,
-          decimals: token.decimals,
-          source: 'token-list',
-        });
-      }
+          name: token.name || token.symbol,
+          decimals: Number(token.decimals),
+          chainId: chainId,
+        }));
+
+      logger.info(`Token List ${name}: Found ${validTokens.length} tokens for chain ${chainId}`);
+      return validTokens;
+      
+    } catch (error) {
+      logger.error(`Token List ${name} fetch failed for chain ${chainId}:`, error);
+      return [];
     }
-
-    return tokens;
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>();
-    const unique: TokenInfo[] = [];
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(token);
-      }
-    }
-
-    return unique;
   }
 }
+
+export default new TokenListDiscovery();

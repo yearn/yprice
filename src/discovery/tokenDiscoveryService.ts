@@ -1,9 +1,10 @@
 import { TokenInfo } from './types';
 import { DISCOVERY_CONFIGS } from './config';
 import { CurveDiscovery } from './curveDiscovery';
+import { CurveFactoriesDiscovery } from './curveFactories';
 import { VeloDiscovery } from './veloDiscovery';
 import { YearnDiscovery } from './yearnDiscovery';
-import { TokenListDiscovery } from './tokenListDiscovery';
+import tokenListDiscovery from './tokenListDiscovery';
 import { GammaDiscovery } from './gammaDiscovery';
 import { PendleDiscovery } from './pendleDiscovery';
 import { AAVEDiscovery } from './aaveDiscovery';
@@ -83,7 +84,7 @@ export class TokenDiscoveryService {
         logger.info(`Chain ${chainId}: Discovered ${yearnTokens.length} Yearn tokens`);
       }
 
-      // 3. Discover Curve pools
+      // 3. Discover Curve pools from API
       if (config.curveFactoryAddress || config.curveApiUrl) {
         const curveDiscovery = new CurveDiscovery(
           chainId,
@@ -94,7 +95,17 @@ export class TokenDiscoveryService {
         
         const curveTokens = await curveDiscovery.discoverTokens();
         tokens.push(...curveTokens);
-        logger.info(`Chain ${chainId}: Discovered ${curveTokens.length} Curve tokens`);
+        logger.info(`Chain ${chainId}: Discovered ${curveTokens.length} Curve tokens from API`);
+      }
+
+      // 3b. Discover ALL Curve factory pools (comprehensive)
+      if (rpcUrl) {
+        const curveFactoriesDiscovery = new CurveFactoriesDiscovery(chainId, rpcUrl);
+        const curveFactoryTokens = await curveFactoriesDiscovery.discoverTokens();
+        tokens.push(...curveFactoryTokens);
+        if (curveFactoryTokens.length > 0) {
+          logger.info(`Chain ${chainId}: Discovered ${curveFactoryTokens.length} Curve factory tokens`);
+        }
       }
 
       // 4. Discover Velodrome/Aerodrome pools
@@ -112,9 +123,12 @@ export class TokenDiscoveryService {
       }
 
       // 5. Load from token lists (Uniswap, 1inch, CoinGecko, etc.)
-      const tokenListDiscovery = new TokenListDiscovery(chainId);
-      const tokenListTokens = await tokenListDiscovery.discoverTokens();
-      tokens.push(...tokenListTokens);
+      const tokenListTokens = await tokenListDiscovery.discoverTokens(chainId);
+      tokens.push(...tokenListTokens.map((t: ERC20Token) => ({
+        address: t.address,
+        chainId: t.chainId,
+        source: 'tokenlist',
+      })));
       logger.info(`Chain ${chainId}: Discovered ${tokenListTokens.length} tokens from token lists`);
 
       // 6. Discover Gamma Protocol tokens
