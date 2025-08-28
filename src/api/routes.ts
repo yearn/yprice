@@ -33,18 +33,25 @@ router.get('/prices/all', (req: Request, res: Response): Response | void => {
     const storage = getPriceStorage();
     const allPrices = storage.getAllPrices();
     
-    const response: ChainPricesResponse = {};
+    const response: any = {};
     
     allPrices.forEach((chainPrices, chainId) => {
-      const chainResponse: any = {};
+      // Collect all addresses and their prices
+      const addresses: string[] = [];
+      const priceMap = new Map<string, any>();
       
       chainPrices.forEach((price, address) => {
-        // Use checksummed address as key
         const checksummedAddress = toChecksumAddress(address);
-        chainResponse[checksummedAddress] = formatPriceResponse(price, humanized, detailed);
+        addresses.push(checksummedAddress);
+        priceMap.set(checksummedAddress, formatPriceResponse(price, humanized, detailed));
       });
       
-      response[chainId.toString()] = chainResponse;
+      // Sort addresses in ascending order (0x000... first, then 0x001..., etc.)
+      addresses.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      
+      // Build sorted response object using Object.fromEntries to preserve order
+      const sortedEntries = addresses.map(addr => [addr, priceMap.get(addr)]);
+      response[chainId.toString()] = Object.fromEntries(sortedEntries);
     });
     
     res.json(response);
