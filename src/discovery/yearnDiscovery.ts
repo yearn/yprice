@@ -7,7 +7,8 @@ import { uniqBy } from 'lodash';
 interface KongVault {
   address: string;
   pricePerShare: string;
-  token: {
+  token: string;  // This is the token address as a string
+  asset?: {
     address: string;
     name?: string;
     symbol?: string;
@@ -80,7 +81,8 @@ export class YearnDiscovery {
           vaults(chainId: ${this.chainId}) {
             address
             pricePerShare
-            token {
+            token
+            asset {
               address
               name
               symbol
@@ -117,21 +119,22 @@ export class YearnDiscovery {
             });
           }
 
-          // Add underlying token
-          if (vault.token?.address && vault.token.address !== '0x0000000000000000000000000000000000000000') {
+          // Add underlying token (from asset field for v3 or token field for v2)
+          const tokenAddress = vault.asset?.address || vault.token;
+          if (tokenAddress && tokenAddress !== '0x0000000000000000000000000000000000000000') {
             tokens.push({
-              address: vault.token.address.toLowerCase(),
+              address: tokenAddress.toLowerCase(),
               chainId: this.chainId,
               source: 'yearn-underlying',
-              name: vault.token.name,
-              symbol: vault.token.symbol,
-              decimals: vault.token.decimals,
+              name: vault.asset?.name,
+              symbol: vault.asset?.symbol,
+              decimals: vault.asset?.decimals,
             });
           }
         }
 
         // If Kong didn't return token info, fetch it on-chain
-        const vaultsWithoutTokenInfo = vaults.filter(v => !v.token?.address && v.address);
+        const vaultsWithoutTokenInfo = vaults.filter(v => !v.asset?.address && !v.token && v.address);
         if (vaultsWithoutTokenInfo.length > 0) {
           const underlyingTokens = await this.fetchUnderlyingTokens(
             vaultsWithoutTokenInfo.map(v => v.address as Address)
@@ -140,7 +143,7 @@ export class YearnDiscovery {
         }
       }
     } catch (error: any) {
-      logger.warn(`Kong GraphQL fetch failed for chain ${this.chainId}:`, error.message);
+      logger.warn(`Kong GraphQL fetch failed for chain ${this.chainId}: ${error.message || 'Unknown error'}`);
     }
 
     return tokens;
