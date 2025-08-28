@@ -9,6 +9,8 @@ import { GammaDiscovery } from './gammaDiscovery';
 import { PendleDiscovery } from './pendleDiscovery';
 import { AAVEDiscovery } from './aaveDiscovery';
 import { CompoundDiscovery } from './compoundDiscovery';
+import { UniswapDiscovery } from './uniswapDiscovery';
+import { BalancerDiscovery } from './balancerDiscovery';
 import { getCoreTokensForChain } from './coreTokens';
 import { ERC20Token } from '../models';
 import { logger } from '../utils';
@@ -176,6 +178,22 @@ export class TokenDiscoveryService {
         if (compoundTokens.length > 0) {
           logger.info(`Chain ${chainId}: Discovered ${compoundTokens.length} Compound tokens`);
         }
+      }
+
+      // 10. Discover Uniswap tokens
+      const uniswapDiscovery = new UniswapDiscovery(chainId);
+      const uniswapTokens = await uniswapDiscovery.discoverTokens();
+      tokens.push(...uniswapTokens);
+      if (uniswapTokens.length > 0) {
+        logger.info(`Chain ${chainId}: Discovered ${uniswapTokens.length} Uniswap tokens`);
+      }
+
+      // 11. Discover Balancer tokens
+      const balancerDiscovery = new BalancerDiscovery(chainId);
+      const balancerTokens = await balancerDiscovery.discoverTokens();
+      tokens.push(...balancerTokens);
+      if (balancerTokens.length > 0) {
+        logger.info(`Chain ${chainId}: Discovered ${balancerTokens.length} Balancer tokens`);
       }
 
       // Store discovered tokens
