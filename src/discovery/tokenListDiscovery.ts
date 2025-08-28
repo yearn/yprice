@@ -15,37 +15,36 @@ interface TokenListToken {
 const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   // Ethereum
   1: [
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/ethereum/all.json' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/1' },
     { name: 'Uniswap', url: 'https://gateway.ipfs.io/ipns/tokens.uniswap.org' },
   ],
   // Optimism
   10: [
     { name: 'Optimism Official', url: 'https://static.optimism.io/optimism.tokenlist.json' },
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/optimism/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/10' },
   ],
   // Gnosis
   100: [
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/xdai/all.json' },
     { name: 'Honeyswap', url: 'https://tokens.honeyswap.org' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/100' },
   ],
   // Polygon
   137: [
     { name: 'Polygon Official', url: 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json' },
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/polygon-pos/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/137' },
   ],
   // Fantom
   250: [
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/fantom/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/250' },
   ],
   // Base
   8453: [
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/base/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/8453' },
   ],
   // Arbitrum
   42161: [
     { name: 'Arbitrum Bridge', url: 'https://bridge.arbitrum.io/token-list-42161.json' },
-    { name: 'CoinGecko', url: 'https://tokens.coingecko.com/arbitrum-one/all.json' },
+    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/42161' },
   ],
 };
 

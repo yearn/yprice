@@ -129,7 +129,6 @@ export interface ChainPricesResponse {
 
 export enum PriceSource {
   DEFILLAMA = 'defillama',
-  COINGECKO = 'coingecko',
   CURVE_FACTORIES = 'curve-factories',
   VELO = 'velodrome',
   AERO = 'aerodrome',

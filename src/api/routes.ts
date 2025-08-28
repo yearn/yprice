@@ -41,13 +41,13 @@ router.get('/prices/all', (req: Request, res: Response): Response | void => {
       const priceMap = new Map<string, any>();
       
       chainPrices.forEach((price, address) => {
-        const checksummedAddress = toChecksumAddress(address);
-        addresses.push(checksummedAddress);
-        priceMap.set(checksummedAddress, formatPriceResponse(price, humanized, detailed));
+        const lowerAddress = address.toLowerCase();
+        addresses.push(lowerAddress);
+        priceMap.set(lowerAddress, formatPriceResponse(price, humanized, detailed));
       });
       
       // Sort addresses in ascending order (0x000... first, then 0x001..., etc.)
-      addresses.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      addresses.sort();
       
       // Build sorted response object using Object.fromEntries to preserve order
       const sortedEntries = addresses.map(addr => [addr, priceMap.get(addr)]);

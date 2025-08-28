@@ -1,5 +1,4 @@
 export * from './defillama';
-export * from './coingecko';
 export * from './velodrome';
 export * from './curveAmm';
 export * from './lensOracle';
@@ -7,7 +6,6 @@ export * from './erc4626';
 export * from './yearnVault';
 
 import { DefilllamaFetcher } from './defillama';
-import { CoingeckoFetcher } from './coingecko';
 import { VelodromeFetcher } from './velodrome';
 import { CurveAmmFetcher } from './curveAmm';
 import { LensOracleFetcher } from './lensOracle';
@@ -21,7 +19,6 @@ import { forEach, filter } from 'lodash';
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher();
-  private coingecko = new CoingeckoFetcher();
   private velodrome = new VelodromeFetcher();
   private curveAmm = new CurveAmmFetcher();
   private lensOracle = new LensOracleFetcher();
@@ -97,14 +94,9 @@ export class PriceFetcherOrchestrator {
     }
 
     // External APIs
-    progressTracker.update(progressKey, priceMap.size, 'Fetching from APIs...');
+    progressTracker.update(progressKey, priceMap.size, 'Fetching from DeFiLlama API...');
     const apiResults = await Promise.all([
       this.defillama.fetchPrices(chainId, missingTokens)
-        .catch(() => {
-          progressTracker.error(progressKey);
-          return new Map<string, Price>();
-        }),
-      this.coingecko.fetchPrices(chainId, missingTokens)
         .catch(() => {
           progressTracker.error(progressKey);
           return new Map<string, Price>();
