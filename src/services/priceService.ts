@@ -84,15 +84,27 @@ export class PriceService {
       // Fetch prices for discovered tokens on each chain IN PARALLEL
       const chainPromises = Array.from(tokensByChain.entries()).map(async ([chainId, tokens]) => {
         if (tokens.length > 0) {
-          // Process in batches to avoid overwhelming APIs
-          const batchSize = 100;
+          // Process in larger batches with better parallelization
+          const batchSize = 500; // Increased from 100
+          const batches: ERC20Token[][] = [];
+          
           for (let i = 0; i < tokens.length; i += batchSize) {
-            const batch = tokens.slice(i, i + batchSize);
-            await this.fetchAndStorePrices(chainId, batch);
+            batches.push(tokens.slice(i, i + batchSize));
+          }
+          
+          // Process batches with controlled concurrency (3 batches at a time)
+          const batchLimit = 3;
+          for (let i = 0; i < batches.length; i += batchLimit) {
+            const batchGroup = batches.slice(i, i + batchLimit);
             
-            // Small delay between batches
-            if (i + batchSize < tokens.length) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
+            // Process batch group in parallel
+            await Promise.all(
+              batchGroup.map(batch => this.fetchAndStorePrices(chainId, batch))
+            );
+            
+            // Minimal delay only between batch groups
+            if (i + batchLimit < batches.length) {
+              await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 1000ms
             }
           }
         }

@@ -12,6 +12,7 @@ import {
   chunk,
   logger 
 } from '../utils';
+import { priceCache } from '../utils/priceCache';
 
 const LLAMA_CHAIN_NAMES: Record<number, string> = {
   1: 'ethereum',
@@ -48,7 +49,8 @@ interface DefiLlamaFetcher {
 
 export class DefilllamaFetcher implements DefiLlamaFetcher {
   private readonly baseUrl = 'https://coins.llama.fi';
-  private readonly limit = pLimit(5);
+  private readonly limit = pLimit(10); // Increased concurrency
+  private readonly BATCH_SIZE = 200; // Increased from 50 to 200
 
   async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {
     const prices = new Map<string, Price>();
@@ -63,16 +65,39 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       return this.fetchKatanaPrices(tokens);
     }
 
-    const tokenChunks = chunk(tokens, 50);
+    // Check cache first
+    const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
+    cachedPrices.forEach((price, address) => {
+      prices.set(address, price);
+    });
+
+    // Filter out tokens that are already cached
+    const uncachedTokens = tokens.filter(t => !prices.has(t.address.toLowerCase()));
+    
+    if (uncachedTokens.length === 0) {
+      logger.info(`DeFiLlama: All ${tokens.length} prices from cache`);
+      return prices;
+    }
+
+    logger.info(`DeFiLlama: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
+
+    // Split into larger chunks and fetch in parallel
+    const tokenChunks = chunk(uncachedTokens, this.BATCH_SIZE);
     const results = await Promise.all(
       tokenChunks.map(chunk => 
         this.limit(() => this.fetchChunkPrices(chainName, chainId, chunk))
       )
     );
 
+    // Combine results and cache them
+    const symbolMap = new Map<string, string>();
+    tokens.forEach(t => symbolMap.set(t.address.toLowerCase(), t.symbol));
+
     results.forEach(chunkPrices => {
       chunkPrices.forEach((price, address) => {
         prices.set(address, price);
+        // Cache the new price
+        priceCache.set(chainId, address, price, symbolMap.get(address));
       });
     });
 

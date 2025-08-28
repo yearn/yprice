@@ -13,6 +13,7 @@ import {
   logger,
   sleep 
 } from '../utils';
+import { priceCache } from '../utils/priceCache';
 
 const GECKO_CHAIN_NAMES: Record<number, string> = {
   1: 'ethereum',
@@ -32,9 +33,10 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
   private readonly baseUrl = 'https://api.coingecko.com/api/v3';
   private readonly proUrl = 'https://pro-api.coingecko.com/api/v3';
   private readonly apiKey?: string;
-  private readonly limit = pLimit(3);
+  private readonly limit = pLimit(5); // Increased from 3 to 5
   private lastRequestTime = 0;
   private readonly minRequestInterval = 1100;
+  private readonly BATCH_SIZE = 250; // Increased from 100 to 250 (API max)
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || process.env.COINGECKO_API_KEY;
@@ -49,16 +51,39 @@ export class CoingeckoFetcher implements CoinGeckoFetcher {
       return prices;
     }
 
-    const tokenChunks = chunk(tokens, 100);
+    // Check cache first
+    const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
+    cachedPrices.forEach((price, address) => {
+      prices.set(address, price);
+    });
+
+    // Filter out tokens that are already cached
+    const uncachedTokens = tokens.filter(t => !prices.has(t.address.toLowerCase()));
+    
+    if (uncachedTokens.length === 0) {
+      logger.info(`CoinGecko: All ${tokens.length} prices from cache`);
+      return prices;
+    }
+
+    logger.info(`CoinGecko: ${cachedPrices.size} from cache, fetching ${uncachedTokens.length} tokens`);
+
+    // Split into larger chunks and fetch in parallel
+    const tokenChunks = chunk(uncachedTokens, this.BATCH_SIZE);
     const results = await Promise.all(
       tokenChunks.map(chunk => 
         this.limit(() => this.fetchChunkPrices(chainName, chainId, chunk))
       )
     );
 
+    // Combine results and cache them
+    const symbolMap = new Map<string, string>();
+    tokens.forEach(t => symbolMap.set(t.address.toLowerCase(), t.symbol));
+
     results.forEach(chunkPrices => {
       chunkPrices.forEach((price, address) => {
         prices.set(address, price);
+        // Cache the new price
+        priceCache.set(chainId, address, price, symbolMap.get(address));
       });
     });
 

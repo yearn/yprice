@@ -15,6 +15,7 @@ import { ERC4626Fetcher } from './erc4626';
 import { YearnVaultFetcher } from './yearnVault';
 import { ERC20Token, Price } from '../models';
 import { logger } from '../utils';
+import { priceCache } from '../utils/priceCache';
 
 export class PriceFetcherOrchestrator {
   private defillama: DefilllamaFetcher;
@@ -45,126 +46,123 @@ export class PriceFetcherOrchestrator {
 
     // Track which tokens still need prices
     let missingTokens = [...tokens];
+    
+    // Build symbol map for caching
+    const symbolMap = new Map<string, string>();
+    tokens.forEach(t => symbolMap.set(t.address.toLowerCase(), t.symbol));
 
     /**
-     * Following ydaemon's exact order:
-     * 1. DeFiLlama
-     * 2. CoinGecko
-     * 3. Curve Factories API (handled by discovery, prices via DeFiLlama/CoinGecko)
-     * 4. Velo/Aero Oracles (handled by discovery, prices via DeFiLlama/CoinGecko)
-     * 5. Curve AMM Oracle
-     * 6. Gamma API (handled by discovery, prices via DeFiLlama/CoinGecko)
-     * 7. Pendle API (handled by discovery, prices via DeFiLlama/CoinGecko)
-     * 8. Lens Oracle
-     * 9. Vault Price Per Share from ERC4626 standard
-     * 10. Vault Price Per Share from Vault (cached) - using yearnVault
-     * 11. Vault Price Per Share from Vault (live) - using yearnVault
+     * Optimized order - check cache and on-chain sources first:
+     * 1. Cache check (immediate)
+     * 2. On-chain oracles in parallel (Lens, Velodrome, Curve AMM)
+     * 3. External APIs only if needed (DeFiLlama, CoinGecko)
+     * 4. Vault/Complex pricing (ERC4626, Yearn)
      */
 
-    // 1. DeFiLlama (primary source)
-    try {
-      const llamaPrices = await this.defillama.fetchPrices(chainId, tokens);
-      llamaPrices.forEach((price, address) => {
-        if (price.price > BigInt(0)) {
-          priceMap.set(address, price);
-        }
-      });
-      logger.info(`DeFiLlama returned ${llamaPrices.size} prices`);
-    } catch (error) {
-      logger.error('DeFiLlama fetcher failed:', error);
-    }
-
-    // Update missing tokens list
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-
-    // 2. CoinGecko (secondary source)
-    if (missingTokens.length > 0) {
-      try {
-        const geckoPrices = await this.coingecko.fetchPrices(chainId, missingTokens);
-        geckoPrices.forEach((price, address) => {
-          if (price.price > BigInt(0)) {
-            priceMap.set(address, price);
-          }
-        });
-        logger.info(`CoinGecko returned ${geckoPrices.size} prices`);
-      } catch (error) {
-        logger.error('CoinGecko fetcher failed:', error);
-      }
-    }
-
-    // 3. Velodrome/Aerodrome Oracle (for LP tokens on Optimism/Base)
-    // Update missing tokens list first
+    // 1. Check cache first
+    const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
+    cachedPrices.forEach((price, address) => {
+      priceMap.set(address, price);
+    });
+    
     missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
     
-    if (missingTokens.length > 0 && (chainId === 10 || chainId === 8453)) {
-      logger.info(`[Velodrome] Attempting to fetch prices for ${missingTokens.length} missing tokens on chain ${chainId}`);
-      try {
-        const veloPrices = await this.velodrome.fetchPrices(chainId, missingTokens, priceMap);
-        veloPrices.forEach((price, address) => {
-          if (price.price > BigInt(0)) {
-            priceMap.set(address, price);
-          }
-        });
-        if (veloPrices.size > 0) {
-          logger.info(`Velodrome returned ${veloPrices.size} prices`);
-        } else {
-          logger.warn(`[Velodrome] Returned 0 prices for chain ${chainId}`);
-        }
-      } catch (error) {
-        logger.error('Velodrome fetcher failed:', error);
-      }
+    if (cachedPrices.size > 0) {
+      logger.info(`Cache returned ${cachedPrices.size} prices, ${missingTokens.length} remaining`);
+    }
+    
+    if (missingTokens.length === 0) {
+      return priceMap;
     }
 
-    // 4. Curve Factories handled by token discovery
-    // Their tokens get prices from DeFiLlama/CoinGecko/Velodrome above
+    // 2. Try on-chain oracles in parallel (faster than external APIs)
+    const onChainPromises: Promise<Map<string, Price>>[] = [];
+    
+    // Lens Oracle
+    onChainPromises.push(
+      this.lensOracle.fetchPrices(chainId, missingTokens)
+        .catch(err => {
+          logger.error('Lens Oracle failed:', err);
+          return new Map<string, Price>();
+        })
+    );
+    
+    // Velodrome/Aerodrome for Optimism/Base
+    if (chainId === 10 || chainId === 8453) {
+      onChainPromises.push(
+        this.velodrome.fetchPrices(chainId, missingTokens, priceMap)
+          .catch(err => {
+            logger.error('Velodrome failed:', err);
+            return new Map<string, Price>();
+          })
+      );
+    }
+    
+    // Curve AMM Oracle
+    onChainPromises.push(
+      this.curveAmm.fetchPrices(chainId, missingTokens, priceMap)
+        .catch(err => {
+          logger.error('Curve AMM failed:', err);
+          return new Map<string, Price>();
+        })
+    );
+    
+    // Execute all on-chain fetches in parallel
+    const onChainResults = await Promise.all(onChainPromises);
+    onChainResults.forEach(result => {
+      result.forEach((price, address) => {
+        if (price.price > BigInt(0) && !priceMap.has(address)) {
+          priceMap.set(address, price);
+          priceCache.set(chainId, address, price, symbolMap.get(address));
+        }
+      });
+    });
+    
+    // Update missing tokens
+    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
+    
+    if (missingTokens.length === 0) {
+      logger.info(`On-chain oracles resolved all prices`);
+      return priceMap;
+    }
+
+    // 3. Try external APIs in parallel (DeFiLlama + CoinGecko)
+    const apiPromises: Promise<Map<string, Price>>[] = [];
+    
+    // DeFiLlama
+    apiPromises.push(
+      this.defillama.fetchPrices(chainId, missingTokens)
+        .catch(err => {
+          logger.error('DeFiLlama failed:', err);
+          return new Map<string, Price>();
+        })
+    );
+    
+    // CoinGecko
+    apiPromises.push(
+      this.coingecko.fetchPrices(chainId, missingTokens)
+        .catch(err => {
+          logger.error('CoinGecko failed:', err);
+          return new Map<string, Price>();
+        })
+    );
+    
+    // Execute both API calls in parallel
+    const apiResults = await Promise.all(apiPromises);
+    apiResults.forEach(result => {
+      result.forEach((price, address) => {
+        if (price.price > BigInt(0) && !priceMap.has(address)) {
+          priceMap.set(address, price);
+          priceCache.set(chainId, address, price, symbolMap.get(address));
+        }
+      });
+    });
+
 
     // Update missing tokens list
     missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
 
-    // 5. Curve AMM Oracle (for Curve LP tokens)
-    if (missingTokens.length > 0) {
-      try {
-        const curveAmmPrices = await this.curveAmm.fetchPrices(chainId, missingTokens, priceMap);
-        curveAmmPrices.forEach((price, address) => {
-          if (price.price > BigInt(0)) {
-            priceMap.set(address, price);
-          }
-        });
-        if (curveAmmPrices.size > 0) {
-          logger.info(`Curve AMM returned ${curveAmmPrices.size} prices`);
-        }
-      } catch (error) {
-        logger.error('Curve AMM fetcher failed:', error);
-      }
-    }
-
-    // 6-7. Gamma & Pendle handled by token discovery
-    // Their tokens get prices from DeFiLlama/CoinGecko above
-
-    // Update missing tokens list
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-
-    // 8. Lens Oracle
-    if (missingTokens.length > 0) {
-      try {
-        const lensPrices = await this.lensOracle.fetchPrices(chainId, missingTokens);
-        lensPrices.forEach((price, address) => {
-          if (price.price > BigInt(0)) {
-            priceMap.set(address, price);
-          }
-        });
-        if (lensPrices.size > 0) {
-          logger.info(`Lens Oracle returned ${lensPrices.size} prices`);
-        }
-      } catch (error) {
-        logger.error('Lens Oracle fetcher failed:', error);
-      }
-    }
-
-    // Update missing tokens list
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-
-    // 9. ERC4626 Vaults (needs underlying prices)
+    // 4. Complex vault pricing (needs underlying prices from above)
     if (missingTokens.length > 0) {
       try {
         const erc4626Prices = await this.erc4626.fetchPrices(chainId, missingTokens, priceMap);
@@ -175,6 +173,10 @@ export class PriceFetcherOrchestrator {
         });
         if (erc4626Prices.size > 0) {
           logger.info(`ERC4626 returned ${erc4626Prices.size} vault prices`);
+          // Cache vault prices
+          erc4626Prices.forEach((price, address) => {
+            priceCache.set(chainId, address, price, symbolMap.get(address));
+          });
         }
       } catch (error) {
         logger.error('ERC4626 fetcher failed:', error);
@@ -184,7 +186,7 @@ export class PriceFetcherOrchestrator {
     // Update missing tokens list
     missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
 
-    // 10-11. Yearn Vault Price Per Share (both cached and live use same fetcher)
+    // 5. Yearn Vault pricing
     if (missingTokens.length > 0) {
       try {
         const vaultPrices = await this.yearnVault.fetchPrices(chainId, missingTokens, priceMap);
@@ -195,6 +197,10 @@ export class PriceFetcherOrchestrator {
         });
         if (vaultPrices.size > 0) {
           logger.info(`Yearn Vault returned ${vaultPrices.size} vault prices`);
+          // Cache vault prices
+          vaultPrices.forEach((price, address) => {
+            priceCache.set(chainId, address, price, symbolMap.get(address));
+          });
         }
       } catch (error) {
         logger.error('Yearn Vault fetcher failed:', error);

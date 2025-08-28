@@ -45,7 +45,7 @@ export function getPublicClient(chainId: number): PublicClient {
       transport: http(rpcUrl),
       batch: {
         multicall: {
-          batchSize: 1024 * 100, // 100KB batches
+          batchSize: 1024 * 1024, // 1MB batches (increased from 100KB)
           wait: 0, // Send immediately
         },
       },
