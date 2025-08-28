@@ -1,85 +1,81 @@
-import { ethers } from 'ethers';
+import { parseAbi, type Address } from 'viem';
 import { TokenInfo } from './types';
-import { logger } from '../utils';
+import { logger, getPublicClient, batchReadContracts } from '../utils';
 
-const COMPOUND_COMPTROLLER_ABI = [
+const COMPOUND_COMPTROLLER_ABI = parseAbi([
   'function getAllMarkets() view returns (address[])',
-];
+]);
 
-const CTOKEN_ABI = [
+const CTOKEN_ABI = parseAbi([
   'function underlying() view returns (address)',
   'function symbol() view returns (string)',
   'function name() view returns (string)',
   'function decimals() view returns (uint8)',
-];
+]);
 
 export class CompoundDiscovery {
   private chainId: number;
   private comptrollerAddress?: string;
-  private provider?: ethers.Provider;
 
-  constructor(chainId: number, comptrollerAddress?: string, rpcUrl?: string) {
+  constructor(chainId: number, comptrollerAddress?: string, _rpcUrl?: string) {
     this.chainId = chainId;
     this.comptrollerAddress = comptrollerAddress;
-    
-    if (rpcUrl && comptrollerAddress) {
-      this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    }
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
 
-    if (!this.provider || !this.comptrollerAddress) {
+    if (!this.comptrollerAddress) {
       return tokens;
     }
 
-    try {
-      const comptroller = new ethers.Contract(
-        this.comptrollerAddress,
-        COMPOUND_COMPTROLLER_ABI,
-        this.provider
-      );
+    const publicClient = getPublicClient(this.chainId);
 
+    try {
       // Get all cToken markets
-      const markets = await (comptroller as any).getAllMarkets();
+      const markets = await publicClient.readContract({
+        address: this.comptrollerAddress as Address,
+        abi: COMPOUND_COMPTROLLER_ABI,
+        functionName: 'getAllMarkets',
+      }) as Address[];
       
       logger.info(`Chain ${this.chainId}: Found ${markets.length} Compound markets`);
 
+      // Add all cTokens first
       for (const cTokenAddress of markets) {
-        // Add cToken
         tokens.push({
           address: cTokenAddress.toLowerCase(),
           chainId: this.chainId,
           source: 'compound-ctoken',
         });
-
-        // Get underlying token
-        try {
-          const cToken = new ethers.Contract(
-            cTokenAddress,
-            CTOKEN_ABI,
-            this.provider
-          );
-
-          // cETH doesn't have underlying (it's native ETH)
-          try {
-            const underlying = await (cToken as any).underlying();
-            if (underlying && underlying !== '0x0000000000000000000000000000000000000000') {
-              tokens.push({
-                address: underlying.toLowerCase(),
-                chainId: this.chainId,
-                source: 'compound-underlying',
-              });
-            }
-          } catch {
-            // This is likely cETH or similar, which doesn't have underlying
-            logger.debug(`No underlying for cToken ${cTokenAddress} - likely native asset wrapper`);
-          }
-        } catch (error) {
-          logger.debug(`Failed to get underlying for cToken ${cTokenAddress}:`, error);
-        }
       }
+
+      // Batch fetch all underlying tokens
+      const underlyingContracts = markets.map(cTokenAddress => ({
+        address: cTokenAddress as Address,
+        abi: CTOKEN_ABI,
+        functionName: 'underlying' as const,
+        args: [],
+      }));
+
+      const underlyingResults = await batchReadContracts<Address>(this.chainId, underlyingContracts);
+      
+      markets.forEach((cTokenAddress, index) => {
+        const result = underlyingResults[index];
+        if (result && result.status === 'success' && result.result) {
+          const underlying = result.result;
+          if (underlying && underlying !== '0x0000000000000000000000000000000000000000') {
+            tokens.push({
+              address: underlying.toLowerCase(),
+              chainId: this.chainId,
+              source: 'compound-underlying',
+            });
+          }
+        } else {
+          // This is likely cETH or similar, which doesn't have underlying
+          logger.debug(`No underlying for cToken ${cTokenAddress} - likely native asset wrapper`);
+        }
+      });
 
       logger.info(`Chain ${this.chainId}: Discovered ${tokens.length} Compound tokens`);
     } catch (error) {

@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { parseAbi, type Address } from 'viem';
 import { TokenInfo } from './types';
-import { logger } from '../utils';
+import { logger, getPublicClient, batchReadContracts } from '../utils';
 
 interface YearnVault {
   address: string;
@@ -29,26 +29,24 @@ const REGISTRY_ADDRESSES: Record<number, string> = {
   42161: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f', // Arbitrum
 };
 
-const VAULT_ABI = [
+const REGISTRY_ABI = parseAbi([
+  'function numVaults() view returns (uint256)',
+  'function vaults(uint256 index) view returns (address)',
+]);
+
+const VAULT_ABI = parseAbi([
   'function token() view returns (address)',
   'function asset() view returns (address)', // v3 vaults
-  'function numVaults() view returns (uint256)',
-  'function vaults(uint256) view returns (address)',
-];
+]);
 
 export class YearnDiscovery {
   private chainId: number;
   private apiUrl: string = 'https://api.yearn.fi/v1/chains';
   private registryAddress?: string;
-  private provider?: ethers.Provider;
 
-  constructor(chainId: number, rpcUrl?: string) {
+  constructor(chainId: number, _rpcUrl?: string) {
     this.chainId = chainId;
     this.registryAddress = REGISTRY_ADDRESSES[chainId];
-    
-    if (rpcUrl && this.registryAddress) {
-      this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    }
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
@@ -60,7 +58,7 @@ export class YearnDiscovery {
       tokens.push(...apiTokens);
       
       // If API fails or returns no results, try on-chain discovery
-      if (tokens.length === 0 && this.registryAddress && this.provider) {
+      if (tokens.length === 0 && this.registryAddress) {
         const onChainTokens = await this.discoverFromRegistry();
         tokens.push(...onChainTokens);
       }
@@ -119,72 +117,100 @@ export class YearnDiscovery {
   private async discoverFromRegistry(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
     
-    if (!this.provider || !this.registryAddress) {
+    if (!this.registryAddress) {
       return tokens;
     }
 
-    try {
-      const registry = new ethers.Contract(
-        this.registryAddress,
-        VAULT_ABI,
-        this.provider
-      );
+    const publicClient = getPublicClient(this.chainId);
 
+    try {
       // Get number of vaults
-      const numVaults = await (registry as any).numVaults();
+      const numVaults = await publicClient.readContract({
+        address: this.registryAddress as Address,
+        abi: REGISTRY_ABI,
+        functionName: 'numVaults',
+      }) as bigint;
       const vaultCount = Number(numVaults);
       
       logger.info(`Fetching ${vaultCount} Yearn vaults from chain ${this.chainId}`);
 
-      // Batch fetch vault addresses
-      const vaultPromises = [];
+      // Batch fetch vault addresses using multicall
+      const vaultIndexContracts = [];
       for (let i = 0; i < Math.min(vaultCount, 200); i++) { // Limit to prevent too many calls
-        vaultPromises.push((registry as any).vaults(i));
+        vaultIndexContracts.push({
+          address: this.registryAddress as Address,
+          abi: REGISTRY_ABI,
+          functionName: 'vaults' as const,
+          args: [BigInt(i)],
+        });
       }
       
-      const vaultAddresses = await Promise.all(vaultPromises);
+      const vaultAddressResults = await batchReadContracts<Address>(this.chainId, vaultIndexContracts);
+      const vaultAddresses: Address[] = [];
+      
+      vaultAddressResults.forEach((result) => {
+        if (result && result.status === 'success' && result.result) {
+          vaultAddresses.push(result.result);
+        }
+      });
 
-      // For each vault, get the underlying token
+      // Add all vault tokens
       for (const vaultAddress of vaultAddresses) {
-        // Add vault token
         tokens.push({
           address: vaultAddress.toLowerCase(),
           chainId: this.chainId,
           source: 'yearn-vault',
         });
+      }
 
-        // Try to get underlying token
-        try {
-          const vaultContract = new ethers.Contract(
-            vaultAddress,
-            VAULT_ABI,
-            this.provider
-          );
-          
-          // Try v2 method first
-          let underlyingAddress;
-          try {
-            underlyingAddress = await (vaultContract as any).token();
-          } catch {
-            // Try v3 method
-            try {
-              underlyingAddress = await (vaultContract as any).asset();
-            } catch {
-              // Skip if neither method works
-              continue;
+      // Batch fetch underlying tokens - try v2 method first
+      const v2TokenContracts = vaultAddresses.map(vaultAddress => ({
+        address: vaultAddress as Address,
+        abi: VAULT_ABI,
+        functionName: 'token' as const,
+        args: [],
+      }));
+
+      const v2TokenResults = await batchReadContracts<Address>(this.chainId, v2TokenContracts);
+      
+      // For vaults where v2 failed, try v3 method
+      const v3VaultAddresses: Address[] = [];
+      vaultAddresses.forEach((vaultAddress, index) => {
+        const result = v2TokenResults[index];
+        if (!result || result.status !== 'success' || !result.result) {
+          v3VaultAddresses.push(vaultAddress);
+        } else if (result.result && result.result !== '0x0000000000000000000000000000000000000000') {
+          tokens.push({
+            address: result.result.toLowerCase(),
+            chainId: this.chainId,
+            source: 'yearn-underlying',
+          });
+        }
+      });
+
+      // Try v3 method for remaining vaults
+      if (v3VaultAddresses.length > 0) {
+        const v3AssetContracts = v3VaultAddresses.map(vaultAddress => ({
+          address: vaultAddress as Address,
+          abi: VAULT_ABI,
+          functionName: 'asset' as const,
+          args: [],
+        }));
+
+        const v3AssetResults = await batchReadContracts<Address>(this.chainId, v3AssetContracts);
+        
+        v3AssetResults.forEach((result) => {
+          if (result && result.status === 'success' && result.result) {
+            const underlyingAddress = result.result;
+            if (underlyingAddress && underlyingAddress !== '0x0000000000000000000000000000000000000000') {
+              tokens.push({
+                address: underlyingAddress.toLowerCase(),
+                chainId: this.chainId,
+                source: 'yearn-underlying',
+              });
             }
           }
-
-          if (underlyingAddress && underlyingAddress !== '0x0000000000000000000000000000000000000000') {
-            tokens.push({
-              address: underlyingAddress.toLowerCase(),
-              chainId: this.chainId,
-              source: 'yearn-underlying',
-            });
-          }
-        } catch {
-          // Skip vaults we can't query
-        }
+        });
       }
     } catch (error) {
       logger.error(`Yearn registry discovery failed for chain ${this.chainId}:`, error);

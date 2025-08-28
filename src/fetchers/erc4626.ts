@@ -1,173 +1,115 @@
-import { ethers } from 'ethers';
-import { ERC20Token, Price, PriceSource } from '../models';
-import { logger } from '../utils';
+import { parseAbi, type Address } from 'viem';
+import { ERC20Token, Price } from '../models';
+import { logger, batchReadContracts } from '../utils';
 
 // ERC4626 Vault ABI - standard methods
-const ERC4626_ABI = [
+const ERC4626_ABI = parseAbi([
   'function asset() view returns (address)',
   'function convertToAssets(uint256 shares) view returns (uint256)',
   'function totalAssets() view returns (uint256)',
   'function totalSupply() view returns (uint256)',
   'function decimals() view returns (uint8)',
-];
-
-interface VaultToAsset {
-  vaultAddress: string;
-  assetAddress: string;
-  shareValue: bigint; // How much asset 1e18 shares is worth
-}
+]);
 
 export class ERC4626Fetcher {
-  private providers: Map<number, ethers.Provider> = new Map();
-
-  constructor() {
-    this.initializeProviders();
-  }
-
-  private initializeProviders(): void {
-    const rpcUrls: Record<number, string | undefined> = {
-      1: process.env.RPC_URI_FOR_1,
-      10: process.env.RPC_URI_FOR_10,
-      137: process.env.RPC_URI_FOR_137,
-      250: process.env.RPC_URI_FOR_250,
-      42161: process.env.RPC_URI_FOR_42161,
-      100: process.env.RPC_URI_FOR_100,
-      8453: process.env.RPC_URI_FOR_8453,
-    };
-
-    for (const [chainId, url] of Object.entries(rpcUrls)) {
-      if (url) {
-        this.providers.set(Number(chainId), new ethers.JsonRpcProvider(url));
-      }
-    }
-  }
-
   async fetchPrices(
     chainId: number,
     tokens: ERC20Token[],
     underlyingPrices: Map<string, Price>
   ): Promise<Map<string, Price>> {
-    const prices = new Map<string, Price>();
-    const provider = this.providers.get(chainId);
+    const priceMap = new Map<string, Price>();
 
-    if (!provider) {
-      return prices;
-    }
-
-    // First, get vault to asset mappings
-    const vaultMappings = await this.getVaultMappings(provider, tokens);
-    
-    // Then calculate prices based on underlying asset prices
-    for (const mapping of vaultMappings) {
-      const assetPrice = underlyingPrices.get(mapping.assetAddress.toLowerCase());
+    try {
       
-      if (assetPrice && assetPrice.price > 0n) {
-        // Calculate vault token price
-        // vault_price = asset_price * shareValue / 1e18
-        const vaultPrice = (assetPrice.price * mapping.shareValue) / BigInt(1e18);
-        
-        if (vaultPrice > 0n) {
-          prices.set(mapping.vaultAddress.toLowerCase(), {
-            address: mapping.vaultAddress,
-            price: vaultPrice,
-            humanizedPrice: Number(vaultPrice) / 1e6,
-            source: PriceSource.ERC4626,
+      // Filter for potential ERC4626 vaults (usually have specific naming patterns)
+      const potentialVaults = tokens.filter(token => {
+        const symbol = token.symbol?.toLowerCase() || '';
+        const name = token.name?.toLowerCase() || '';
+        return (
+          symbol.includes('vault') ||
+          name.includes('vault') ||
+          symbol.startsWith('yv') ||
+          symbol.startsWith('av') ||
+          symbol.includes('4626')
+        );
+      });
+
+      if (potentialVaults.length === 0) {
+        return priceMap;
+      }
+
+      logger.info(`ERC4626: Checking ${potentialVaults.length} potential vaults on chain ${chainId}`);
+
+      // Step 1: Batch read asset addresses for all vaults
+      const assetContracts = potentialVaults.map(vault => ({
+        address: vault.address as Address,
+        abi: ERC4626_ABI,
+        functionName: 'asset' as const,
+        args: [],
+      }));
+
+      const assetResults = await batchReadContracts<Address>(chainId, assetContracts);
+
+      // Filter vaults that successfully returned an asset address
+      const validVaults: { vault: ERC20Token; asset: string }[] = [];
+      potentialVaults.forEach((vault, index) => {
+        const result = assetResults[index];
+        if (result && result.status === 'success' && result.result) {
+          validVaults.push({
+            vault,
+            asset: result.result.toLowerCase(),
           });
         }
+      });
+
+      if (validVaults.length === 0) {
+        return priceMap;
       }
-    }
 
-    if (prices.size > 0) {
-      logger.info(`ERC4626: Calculated ${prices.size} vault prices for chain ${chainId}`);
-    }
+      // Step 2: Batch read convertToAssets for 1e18 shares
+      const shareValueContracts = validVaults.map(({ vault }) => ({
+        address: vault.address as Address,
+        abi: ERC4626_ABI,
+        functionName: 'convertToAssets' as const,
+        args: [BigInt(10 ** 18)], // 1e18 shares
+      }));
 
-    return prices;
-  }
+      const shareValueResults = await batchReadContracts<bigint>(chainId, shareValueContracts);
 
-  private async getVaultMappings(
-    provider: ethers.Provider,
-    tokens: ERC20Token[]
-  ): Promise<VaultToAsset[]> {
-    const mappings: VaultToAsset[] = [];
-    
-    // Process in batches
-    const batchSize = 20;
-    
-    for (let i = 0; i < tokens.length; i += batchSize) {
-      const batch = tokens.slice(i, i + batchSize);
-      const batchPromises = batch.map(token => this.checkERC4626Vault(provider, token));
-      const results = await Promise.all(batchPromises);
-      
-      for (const result of results) {
-        if (result) {
-          mappings.push(result);
-        }
-      }
-    }
-    
-    return mappings;
-  }
+      // Step 3: Calculate vault prices based on underlying asset prices
+      let successCount = 0;
+      validVaults.forEach(({ vault, asset }, index) => {
+        const shareValueResult = shareValueResults[index];
+        
+        if (shareValueResult && shareValueResult.status === 'success' && shareValueResult.result) {
+          const shareValue = shareValueResult.result;
+          const assetPrice = underlyingPrices.get(asset);
 
-  private async checkERC4626Vault(
-    provider: ethers.Provider,
-    token: ERC20Token
-  ): Promise<VaultToAsset | null> {
-    try {
-      const vault = new ethers.Contract(token.address, ERC4626_ABI, provider);
-      
-      // Check if it's an ERC4626 vault by calling asset()
-      const assetFunc = vault['asset'];
-      if (!assetFunc) return null;
-      
-      const assetAddress = await assetFunc();
-      
-      if (assetAddress && assetAddress !== '0x0000000000000000000000000000000000000000') {
-        // Get conversion rate for 1e18 shares
-        const convertFunc = vault['convertToAssets'];
-        if (convertFunc) {
-          try {
-            const shareValue = await convertFunc(BigInt(1e18));
-            
-            return {
-              vaultAddress: token.address,
-              assetAddress: assetAddress.toLowerCase(),
-              shareValue: BigInt(shareValue.toString()),
-            };
-          } catch {
-            // Some vaults might have different implementations
-            // Try alternative calculation: totalAssets / totalSupply
-            try {
-              const totalAssetsFunc = vault['totalAssets'];
-              const totalSupplyFunc = vault['totalSupply'];
-              
-              if (!totalAssetsFunc || !totalSupplyFunc) {
-                return null;
-              }
-              
-              const totalAssets = await totalAssetsFunc();
-              const totalSupply = await totalSupplyFunc();
-              
-              if (totalSupply > 0n) {
-                const shareValue = (BigInt(totalAssets.toString()) * BigInt(1e18)) / BigInt(totalSupply.toString());
-                
-                return {
-                  vaultAddress: token.address,
-                  assetAddress: assetAddress.toLowerCase(),
-                  shareValue: shareValue,
-                };
-              }
-            } catch {
-              // Vault doesn't support standard methods
+          if (assetPrice && assetPrice.price > BigInt(0)) {
+            // Calculate vault price: (shareValue * assetPrice) / 1e18
+            // shareValue is how many asset tokens you get for 1e18 vault shares
+            // Result should be in 6 decimals (our standard price format)
+            const vaultPrice = (shareValue * assetPrice.price) / BigInt(10 ** 18);
+
+            if (vaultPrice > BigInt(0)) {
+              priceMap.set(vault.address.toLowerCase(), {
+                address: vault.address.toLowerCase(),
+                price: vaultPrice,
+                source: 'erc4626',
+              });
+              successCount++;
             }
           }
         }
+      });
+
+      if (successCount > 0) {
+        logger.info(`ERC4626: Calculated ${successCount} vault prices on chain ${chainId}`);
       }
-    } catch {
-      // Not an ERC4626 vault
+    } catch (error) {
+      logger.error(`ERC4626 fetcher failed for chain ${chainId}:`, error);
     }
-    
-    return null;
+
+    return priceMap;
   }
 }
-
-export default new ERC4626Fetcher();

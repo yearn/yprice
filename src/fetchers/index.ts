@@ -1,5 +1,6 @@
 export * from './defillama';
 export * from './coingecko';
+export * from './velodrome';
 export * from './curveAmm';
 export * from './lensOracle';
 export * from './erc4626';
@@ -7,6 +8,7 @@ export * from './yearnVault';
 
 import { DefilllamaFetcher } from './defillama';
 import { CoingeckoFetcher } from './coingecko';
+import { VelodromeFetcher } from './velodrome';
 import { CurveAmmFetcher } from './curveAmm';
 import { LensOracleFetcher } from './lensOracle';
 import { ERC4626Fetcher } from './erc4626';
@@ -17,6 +19,7 @@ import { logger } from '../utils';
 export class PriceFetcherOrchestrator {
   private defillama: DefilllamaFetcher;
   private coingecko: CoingeckoFetcher;
+  private velodrome: VelodromeFetcher;
   private curveAmm: CurveAmmFetcher;
   private lensOracle: LensOracleFetcher;
   private erc4626: ERC4626Fetcher;
@@ -25,6 +28,7 @@ export class PriceFetcherOrchestrator {
   constructor() {
     this.defillama = new DefilllamaFetcher();
     this.coingecko = new CoingeckoFetcher();
+    this.velodrome = new VelodromeFetcher();
     this.curveAmm = new CurveAmmFetcher();
     this.lensOracle = new LensOracleFetcher();
     this.erc4626 = new ERC4626Fetcher();
@@ -88,8 +92,31 @@ export class PriceFetcherOrchestrator {
       }
     }
 
-    // 3-4. Curve Factories & Velo/Aero handled by token discovery
-    // Their tokens get prices from DeFiLlama/CoinGecko above
+    // 3. Velodrome/Aerodrome Oracle (for LP tokens on Optimism/Base)
+    // Update missing tokens list first
+    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
+    
+    if (missingTokens.length > 0 && (chainId === 10 || chainId === 8453)) {
+      logger.info(`[Velodrome] Attempting to fetch prices for ${missingTokens.length} missing tokens on chain ${chainId}`);
+      try {
+        const veloPrices = await this.velodrome.fetchPrices(chainId, missingTokens, priceMap);
+        veloPrices.forEach((price, address) => {
+          if (price.price > BigInt(0)) {
+            priceMap.set(address, price);
+          }
+        });
+        if (veloPrices.size > 0) {
+          logger.info(`Velodrome returned ${veloPrices.size} prices`);
+        } else {
+          logger.warn(`[Velodrome] Returned 0 prices for chain ${chainId}`);
+        }
+      } catch (error) {
+        logger.error('Velodrome fetcher failed:', error);
+      }
+    }
+
+    // 4. Curve Factories handled by token discovery
+    // Their tokens get prices from DeFiLlama/CoinGecko/Velodrome above
 
     // Update missing tokens list
     missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));

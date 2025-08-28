@@ -1,157 +1,114 @@
-import { ethers } from 'ethers';
-import { ERC20Token, Price, PriceSource } from '../models';
-import { logger } from '../utils';
+import { parseAbi, type Address } from 'viem';
+import { ERC20Token, Price } from '../models';
+import { logger, getPublicClient } from '../utils';
 
-// Lens Oracle contract addresses by chain
+// Lens Price Oracle contract addresses by chain
 const LENS_ORACLE_ADDRESSES: Record<number, string> = {
-  1: '0x83d95e0D5f402511dB06817Aff3f9eA88224B030', // Ethereum
-  10: '0xB082d9f4734c535D9d80536F7E87a6f4F471bF65', // Optimism
-  42161: '0x043518AB266485dC085a1DB095B8d9C2Fc78E9b9', // Arbitrum
-  250: '0x57AA88A0810dfe3f9b71a9b179Dd8bF5F956C46A', // Fantom
-  8453: '0xE0F3D78DB7bC111996864A32d22AB0F59Ca5Fa86', // Base
+  1: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Ethereum
+  10: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Optimism
+  137: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Polygon
+  250: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Fantom
+  42161: '0x69eBe485a182dE951F37d3f86fD29a3eb47AE80C', // Arbitrum
 };
 
-// Lens Oracle ABI - only the methods we need
-const LENS_ORACLE_ABI = [
-  'function getPriceUsdcRecommended(address token) view returns (uint256)',
-  'function getPricesUsdcRecommended(address[] tokens) view returns (uint256[])',
-];
+// Lens Oracle ABI
+const LENS_ORACLE_ABI = parseAbi([
+  'function getPrices(address[] tokens, address[] oracles) view returns (uint256[] prices)',
+  'function getPrice(address token, address oracle) view returns (uint256)',
+]);
 
 export class LensOracleFetcher {
-  private providers: Map<number, ethers.Provider> = new Map();
-  private oracles: Map<number, ethers.Contract> = new Map();
+  async fetchPrices(
+    chainId: number,
+    tokens: ERC20Token[]
+  ): Promise<Map<string, Price>> {
+    const priceMap = new Map<string, Price>();
+    const lensOracleAddress = LENS_ORACLE_ADDRESSES[chainId];
 
-  constructor() {
-    this.initializeProviders();
-  }
-
-  private initializeProviders(): void {
-    // Initialize RPC providers and oracle contracts for each chain
-    const rpcUrls: Record<number, string | undefined> = {
-      1: process.env.RPC_URI_FOR_1,
-      10: process.env.RPC_URI_FOR_10,
-      42161: process.env.RPC_URI_FOR_42161,
-      250: process.env.RPC_URI_FOR_250,
-      8453: process.env.RPC_URI_FOR_8453,
-    };
-
-    for (const [chainId, url] of Object.entries(rpcUrls)) {
-      const chain = Number(chainId);
-      const oracleAddress = LENS_ORACLE_ADDRESSES[chain];
-      
-      if (url && oracleAddress) {
-        const provider = new ethers.JsonRpcProvider(url);
-        this.providers.set(chain, provider);
-        
-        const oracle = new ethers.Contract(oracleAddress, LENS_ORACLE_ABI, provider);
-        this.oracles.set(chain, oracle);
-      }
-    }
-  }
-
-  async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {
-    const prices = new Map<string, Price>();
-    const oracle = this.oracles.get(chainId);
-    
-    if (!oracle) {
-      // No Lens Oracle on this chain
-      return prices;
+    if (!lensOracleAddress) {
+      return priceMap;
     }
 
-    // Process in batches to avoid gas limits
-    const batchSize = 50;
-    
-    for (let i = 0; i < tokens.length; i += batchSize) {
-      const batch = tokens.slice(i, i + batchSize);
-      
-      try {
-        // Use batch method if available
-        const addresses = batch.map(t => t.address);
-        const batchPrices = await this.fetchBatchPrices(oracle, addresses);
-        
-        for (let j = 0; j < batch.length; j++) {
-          const token = batch[j];
-          const price = batchPrices[j];
-          
-          if (!token) continue;
-          
-          if (price && price > 0n) {
-            prices.set(token.address.toLowerCase(), {
-              address: token.address,
-              price: price,
-              humanizedPrice: Number(price) / 1e6,
-              source: PriceSource.LENS,
-            });
-          }
-        }
-      } catch (error) {
-        // If batch fails, try individual queries as fallback
-        await this.fetchIndividualPrices(oracle, batch, prices);
-      }
-    }
-
-    if (prices.size > 0) {
-      logger.info(`Lens Oracle: Fetched ${prices.size} prices for chain ${chainId}`);
-    }
-
-    return prices;
-  }
-
-  private async fetchBatchPrices(oracle: ethers.Contract, addresses: string[]): Promise<bigint[]> {
     try {
-      // Try batch method first
-      const getPricesBatch = oracle['getPricesUsdcRecommended'];
-      if (getPricesBatch) {
-        const prices = await getPricesBatch(addresses);
-        return prices.map((p: any) => BigInt(p.toString()));
+      const publicClient = getPublicClient(chainId);
+
+      // For Lens Oracle, we need to know the oracle addresses for each token
+      // This is chain-specific and would typically come from a configuration
+      // For now, we'll use a simplified approach with known oracle mappings
+      const tokenToOracle = this.getOracleMappings(chainId);
+      
+      const tokensWithOracles = tokens
+        .filter(token => tokenToOracle.has(token.address.toLowerCase()))
+        .map(token => ({
+          token,
+          oracle: tokenToOracle.get(token.address.toLowerCase())!,
+        }));
+
+      if (tokensWithOracles.length === 0) {
+        return priceMap;
       }
-    } catch {
-      // Batch method not available or failed
+
+      logger.info(`Lens Oracle: Fetching ${tokensWithOracles.length} prices on chain ${chainId}`);
+
+      // Batch fetch prices using the Lens Oracle getPrices function
+      const tokenAddresses = tokensWithOracles.map(t => t.token.address as Address);
+      const oracleAddresses = tokensWithOracles.map(t => t.oracle as Address);
+
+      const prices = await publicClient.readContract({
+        address: lensOracleAddress as Address,
+        abi: LENS_ORACLE_ABI,
+        functionName: 'getPrices',
+        args: [tokenAddresses, oracleAddresses],
+      }) as bigint[];
+
+      // Process results
+      let successCount = 0;
+      tokensWithOracles.forEach((item, index) => {
+        const price = prices[index];
+        if (price && price > BigInt(0)) {
+          // Lens Oracle returns prices in 18 decimals, convert to 6
+          const normalizedPrice = price / BigInt(10 ** 12);
+          
+          priceMap.set(item.token.address.toLowerCase(), {
+            address: item.token.address.toLowerCase(),
+            price: normalizedPrice,
+            source: 'lens-oracle',
+          });
+          successCount++;
+        }
+      });
+
+      if (successCount > 0) {
+        logger.info(`Lens Oracle: Fetched ${successCount} prices for chain ${chainId}`);
+      }
+    } catch (error) {
+      logger.error(`Lens Oracle fetcher failed for chain ${chainId}:`, error);
     }
 
-    // Fallback to individual calls
-    const prices: bigint[] = [];
-    for (const address of addresses) {
-      try {
-        const getPriceFunc = oracle['getPriceUsdcRecommended'];
-        if (!getPriceFunc) {
-          prices.push(0n);
-          continue;
-        }
-        const price = await getPriceFunc(address);
-        prices.push(BigInt(price.toString()));
-      } catch {
-        prices.push(0n);
-      }
-    }
-    return prices;
+    return priceMap;
   }
 
-  private async fetchIndividualPrices(
-    oracle: ethers.Contract,
-    tokens: ERC20Token[],
-    prices: Map<string, Price>
-  ): Promise<void> {
-    for (const token of tokens) {
-      try {
-        const getPriceFunc = oracle['getPriceUsdcRecommended'];
-        if (!getPriceFunc) continue;
-        const price = await getPriceFunc(token.address);
-        const priceBI = BigInt(price.toString());
-        
-        if (priceBI > 0n) {
-          prices.set(token.address.toLowerCase(), {
-            address: token.address,
-            price: priceBI,
-            humanizedPrice: Number(priceBI) / 1e6,
-            source: PriceSource.LENS,
-          });
-        }
-      } catch {
-        // Silent fail - token might not have price in oracle
-      }
+  private getOracleMappings(chainId: number): Map<string, string> {
+    // This would typically come from a configuration file
+    // For now, returning some known mappings for major tokens
+    const mappings = new Map<string, string>();
+
+    if (chainId === 1) {
+      // Ethereum mainnet oracles
+      mappings.set('0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419'); // WETH
+      mappings.set('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', '0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6'); // USDC
+      mappings.set('0xdac17f958d2ee523a2206206994597c13d831ec7', '0x3E7d1eAB13ad0104d2750B8863b489D65364e32D'); // USDT
+      mappings.set('0x6b175474e89094c44da98b954eedeac495271d0f', '0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9'); // DAI
+    } else if (chainId === 10) {
+      // Optimism oracles
+      mappings.set('0x4200000000000000000000000000000000000006', '0x13e3Ee699D1909E989722E753853AE30b17e08c5'); // WETH
+      mappings.set('0x7f5c764cbc14f9669b88837ca1490cca17c31607', '0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3'); // USDC
+    } else if (chainId === 137) {
+      // Polygon oracles
+      mappings.set('0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270', '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0'); // WMATIC
+      mappings.set('0x2791bca1f2de4661ed88a30c99a7a9449aa84174', '0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7'); // USDC
     }
+
+    return mappings;
   }
 }
-
-export default new LensOracleFetcher();

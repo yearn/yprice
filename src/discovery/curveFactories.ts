@@ -1,6 +1,6 @@
-import { ethers } from 'ethers';
+import { parseAbi, type Address } from 'viem';
 import { TokenInfo } from './types';
-import { logger } from '../utils';
+import { logger, getPublicClient, batchReadContracts } from '../utils';
 
 // Curve Factory addresses for different pool types
 const CURVE_FACTORIES: Record<number, Record<string, string>> = {
@@ -30,33 +30,27 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
   },
 };
 
-const FACTORY_ABI = [
+const FACTORY_ABI = parseAbi([
   'function pool_count() view returns (uint256)',
-  'function pool_list(uint256) view returns (address)',
-  'function get_lp_token(address) view returns (address)',
-  'function get_coins(address) view returns (address[2])',
-  'function get_coins(address) view returns (address[4])',
-];
+  'function pool_list(uint256 index) view returns (address)',
+  'function get_lp_token(address pool) view returns (address)',
+  'function get_coins(address pool) view returns (address[2])',
+]);
 
 
 export class CurveFactoriesDiscovery {
   private chainId: number;
-  private provider?: ethers.Provider;
   private factories: Record<string, string> = {};
 
-  constructor(chainId: number, rpcUrl?: string) {
+  constructor(chainId: number, _rpcUrl?: string) {
     this.chainId = chainId;
     this.factories = CURVE_FACTORIES[chainId] || {};
-    
-    if (rpcUrl && Object.keys(this.factories).length > 0) {
-      this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    }
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
     
-    if (!this.provider || Object.keys(this.factories).length === 0) {
+    if (Object.keys(this.factories).length === 0) {
       return tokens;
     }
 
@@ -76,82 +70,97 @@ export class CurveFactoriesDiscovery {
 
   private async discoverFromFactory(factoryAddress: string, factoryType: string): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
-    
-    if (!this.provider) return tokens;
+    const publicClient = getPublicClient(this.chainId);
 
     try {
-      const factory = new ethers.Contract(factoryAddress, FACTORY_ABI, this.provider);
-      
       // Get pool count
-      const poolCountFunc = factory['pool_count'];
-      if (!poolCountFunc) return tokens;
-      const poolCount = await poolCountFunc();
+      const poolCount = await publicClient.readContract({
+        address: factoryAddress as Address,
+        abi: FACTORY_ABI,
+        functionName: 'pool_count',
+      }) as bigint;
       const count = Number(poolCount);
       
       logger.info(`Chain ${this.chainId}: Curve ${factoryType} factory has ${count} pools`);
 
-      // Batch pool discovery to avoid overwhelming the RPC
-      const batchSize = 50;
-      for (let i = 0; i < count; i += batchSize) {
-        const batch = [];
-        for (let j = i; j < Math.min(i + batchSize, count); j++) {
-          batch.push(this.discoverPoolTokens(factory, j, factoryType));
-        }
-        
-        const batchTokens = await Promise.all(batch);
-        batchTokens.forEach(poolTokens => tokens.push(...poolTokens));
-        
-        // Small delay between batches
-        if (i + batchSize < count) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-    } catch (error) {
-      logger.error(`Error discovering from Curve factory ${factoryAddress}:`, error);
-    }
-
-    return tokens;
-  }
-
-  private async discoverPoolTokens(
-    factory: ethers.Contract, 
-    poolIndex: number,
-    factoryType: string
-  ): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-    
-    try {
-      // Get pool address
-      const poolListFunc = factory['pool_list'];
-      if (!poolListFunc) return tokens;
-      const poolAddress = await poolListFunc(poolIndex);
-      
-      // Get LP token address
-      let lpToken: string | undefined;
-      try {
-        const getLpTokenFunc = factory['get_lp_token'];
-        if (getLpTokenFunc) {
-          lpToken = await getLpTokenFunc(poolAddress);
-        }
-      } catch {
-        // Some factories don't have get_lp_token, LP token is the pool itself
-        lpToken = poolAddress;
-      }
-      
-      if (lpToken && lpToken !== '0x0000000000000000000000000000000000000000') {
-        // Add LP token
-        tokens.push({
-          address: lpToken.toLowerCase(),
-          chainId: this.chainId,
-          source: `curve-${factoryType}-lp`,
+      // First, batch fetch all pool addresses
+      const poolListContracts = [];
+      for (let i = 0; i < count; i++) {
+        poolListContracts.push({
+          address: factoryAddress as Address,
+          abi: FACTORY_ABI,
+          functionName: 'pool_list' as const,
+          args: [BigInt(i)],
         });
+      }
 
-        // Try to get pool coins
-        try {
-          const getCoins = factory['get_coins(address)'] || factory['get_coins'];
-          if (getCoins) {
-            const coins = await getCoins(poolAddress);
-            for (const coin of coins) {
+      const poolAddresses: Address[] = [];
+      const batchSize = 100;
+      for (let i = 0; i < poolListContracts.length; i += batchSize) {
+        const batch = poolListContracts.slice(i, i + batchSize);
+        const results = await batchReadContracts<Address>(this.chainId, batch);
+        
+        results.forEach((result) => {
+          if (result && result.status === 'success' && result.result) {
+            poolAddresses.push(result.result);
+          }
+        });
+      }
+
+      logger.info(`Chain ${this.chainId}: Found ${poolAddresses.length} pools from Curve ${factoryType} factory`);
+
+      // Batch fetch LP tokens for all pools
+      const lpTokenContracts = poolAddresses.map(poolAddress => ({
+        address: factoryAddress as Address,
+        abi: FACTORY_ABI,
+        functionName: 'get_lp_token' as const,
+        args: [poolAddress],
+      }));
+
+      const lpTokenResults: (Address | undefined)[] = [];
+      for (let i = 0; i < lpTokenContracts.length; i += batchSize) {
+        const batch = lpTokenContracts.slice(i, i + batchSize);
+        const results = await batchReadContracts<Address>(this.chainId, batch);
+        
+        results.forEach((result, index) => {
+          if (result && result.status === 'success' && result.result) {
+            lpTokenResults[i + index] = result.result;
+          } else {
+            // If get_lp_token fails, LP token is the pool itself
+            lpTokenResults[i + index] = poolAddresses[i + index];
+          }
+        });
+      }
+
+      // Process LP tokens
+      for (let i = 0; i < poolAddresses.length; i++) {
+        const lpToken = lpTokenResults[i];
+
+        if (lpToken && lpToken !== '0x0000000000000000000000000000000000000000') {
+          // Add LP token
+          tokens.push({
+            address: lpToken.toLowerCase(),
+            chainId: this.chainId,
+            source: `curve-${factoryType}-lp`,
+          });
+        }
+      }
+
+      // Batch fetch coins for all pools (try 2-coin first)
+      const coinsContracts = poolAddresses.map(poolAddress => ({
+        address: factoryAddress as Address,
+        abi: FACTORY_ABI,
+        functionName: 'get_coins' as const,
+        args: [poolAddress],
+      }));
+
+      for (let i = 0; i < coinsContracts.length; i += batchSize) {
+        const batch = coinsContracts.slice(i, i + batchSize);
+        const results = await batchReadContracts<readonly Address[]>(this.chainId, batch);
+        
+        results.forEach((result) => {
+          if (result && result.status === 'success' && result.result) {
+            for (const coin of result.result) {
               if (coin && coin !== '0x0000000000000000000000000000000000000000') {
                 tokens.push({
                   address: coin.toLowerCase(),
@@ -161,16 +170,16 @@ export class CurveFactoriesDiscovery {
               }
             }
           }
-        } catch {
-          // Some pools might have different interfaces
-        }
+        });
       }
     } catch (error) {
-      // Silent fail for individual pools
+      logger.error(`Error discovering from Curve factory ${factoryAddress}:`, error);
     }
 
     return tokens;
   }
+
+  // Removed discoverPoolTokens - now using batch processing in discoverFromFactory
 
   private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
     const seen = new Set<string>();

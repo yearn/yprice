@@ -1,28 +1,23 @@
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { parseAbi, type Address } from 'viem';
 import { TokenInfo, CurvePoolData } from './types';
-import { logger } from '../utils';
+import { logger, getPublicClient, batchReadContracts } from '../utils';
 
-const CURVE_FACTORY_ABI = [
+const CURVE_FACTORY_ABI = parseAbi([
   'function pool_count() view returns (uint256)',
-  'function pool_list(uint256) view returns (address)',
-  'function get_coins(address) view returns (address[2])',
-];
+  'function pool_list(uint256 index) view returns (address)',
+  'function get_coins(address pool) view returns (address[2])',
+]);
 
 export class CurveDiscovery {
   private chainId: number;
   private factoryAddress?: string;
   private apiUrl?: string;
-  private provider?: ethers.Provider;
 
-  constructor(chainId: number, factoryAddress?: string, apiUrl?: string, rpcUrl?: string) {
+  constructor(chainId: number, factoryAddress?: string, apiUrl?: string, _rpcUrl?: string) {
     this.chainId = chainId;
     this.factoryAddress = factoryAddress;
     this.apiUrl = apiUrl;
-    
-    if (rpcUrl && factoryAddress) {
-      this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    }
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
@@ -36,7 +31,7 @@ export class CurveDiscovery {
       }
       
       // If API fails or is not available, try on-chain discovery
-      if (tokens.length === 0 && this.factoryAddress && this.provider) {
+      if (tokens.length === 0 && this.factoryAddress) {
         const onChainTokens = await this.discoverFromContract();
         tokens.push(...onChainTokens);
       }
@@ -94,50 +89,64 @@ export class CurveDiscovery {
   private async discoverFromContract(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
     
-    if (!this.provider || !this.factoryAddress) {
+    if (!this.factoryAddress) {
       return tokens;
     }
 
-    try {
-      const factory = new ethers.Contract(
-        this.factoryAddress,
-        CURVE_FACTORY_ABI,
-        this.provider
-      );
+    const publicClient = getPublicClient(this.chainId);
 
-      const poolCount = await (factory as any).pool_count();
+    try {
+      const poolCount = await publicClient.readContract({
+        address: this.factoryAddress as Address,
+        abi: CURVE_FACTORY_ABI,
+        functionName: 'pool_count',
+      }) as bigint;
       const maxPools = Math.min(Number(poolCount), 500); // Limit to prevent too many calls
 
       logger.info(`Fetching ${maxPools} Curve pools from chain ${this.chainId}`);
 
-      // Batch fetch pool addresses
-      const poolPromises = [];
+      // Batch fetch pool addresses using multicall
+      const poolListContracts = [];
       for (let i = 0; i < maxPools; i++) {
-        poolPromises.push((factory as any).pool_list(i));
+        poolListContracts.push({
+          address: this.factoryAddress as Address,
+          abi: CURVE_FACTORY_ABI,
+          functionName: 'pool_list' as const,
+          args: [BigInt(i)],
+        });
       }
       
-      const poolAddresses = await Promise.all(poolPromises);
-
-      // Batch fetch coins for each pool
-      const coinPromises = poolAddresses.map(poolAddr => 
-        (factory as any).get_coins(poolAddr).catch(() => null)
-      );
+      const poolAddressResults = await batchReadContracts<Address>(this.chainId, poolListContracts);
+      const poolAddresses: Address[] = [];
       
-      const poolCoins = await Promise.all(coinPromises);
+      poolAddressResults.forEach((result) => {
+        if (result && result.status === 'success' && result.result) {
+          poolAddresses.push(result.result);
+        }
+      });
 
-      for (let i = 0; i < poolAddresses.length; i++) {
-        const poolAddress = poolAddresses[i];
-        const coins = poolCoins[i];
-
-        // Add pool as LP token
+      // Add all pools as LP tokens
+      for (const poolAddress of poolAddresses) {
         tokens.push({
           address: poolAddress.toLowerCase(),
           chainId: this.chainId,
           source: 'curve-lp',
         });
+      }
 
-        // Add underlying coins
-        if (coins) {
+      // Batch fetch coins for each pool using multicall
+      const coinContracts = poolAddresses.map(poolAddr => ({
+        address: this.factoryAddress as Address,
+        abi: CURVE_FACTORY_ABI,
+        functionName: 'get_coins' as const,
+        args: [poolAddr],
+      }));
+      
+      const coinResults = await batchReadContracts<readonly Address[]>(this.chainId, coinContracts);
+
+      coinResults.forEach((result) => {
+        if (result && result.status === 'success' && result.result) {
+          const coins = result.result;
           for (const coin of coins) {
             if (coin && coin !== '0x0000000000000000000000000000000000000000') {
               tokens.push({
@@ -148,7 +157,7 @@ export class CurveDiscovery {
             }
           }
         }
-      }
+      });
     } catch (error) {
       logger.error(`Curve contract discovery failed for chain ${this.chainId}:`, error);
     }

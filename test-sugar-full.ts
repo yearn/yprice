@@ -1,19 +1,64 @@
-import { ethers } from 'ethers';
+import { createPublicClient, http, type Address } from 'viem';
+import { optimism } from 'viem/chains';
 
 const SUGAR_ADDRESS = '0x3e532BC1998584fe18e357B5187897ad0110ED3A';
 const RPC_URL = process.env.RPC_URI_FOR_10 || 'https://optimism.gateway.tenderly.co/1ZwsLMvEIhxbExt4w109Ur';
 
+// Sugar ABI - complex tuple needs to be defined as a proper ABI object for viem
 const SUGAR_ABI = [
-  'function all(uint256 limit, uint256 offset) view returns (tuple(address lp, string symbol, uint8 decimals, uint256 liquidity, int24 type, int24 tick, uint160 sqrt_ratio, address token0, uint256 reserve0, uint256 staked0, address token1, uint256 reserve1, uint256 staked1, address gauge, uint256 gauge_liquidity, bool gauge_alive, address fee, address bribe, address factory, uint256 emissions, address emissions_token, uint256 pool_fee, uint256 unstaked_fee, uint256 token0_fees, uint256 token1_fees)[])',
-];
+  {
+    inputs: [
+      { name: 'limit', type: 'uint256' },
+      { name: 'offset', type: 'uint256' }
+    ],
+    name: 'all',
+    outputs: [
+      {
+        components: [
+          { name: 'lp', type: 'address' },
+          { name: 'symbol', type: 'string' },
+          { name: 'decimals', type: 'uint8' },
+          { name: 'liquidity', type: 'uint256' },
+          { name: 'type', type: 'int24' },
+          { name: 'tick', type: 'int24' },
+          { name: 'sqrt_ratio', type: 'uint160' },
+          { name: 'token0', type: 'address' },
+          { name: 'reserve0', type: 'uint256' },
+          { name: 'staked0', type: 'uint256' },
+          { name: 'token1', type: 'address' },
+          { name: 'reserve1', type: 'uint256' },
+          { name: 'staked1', type: 'uint256' },
+          { name: 'gauge', type: 'address' },
+          { name: 'gauge_liquidity', type: 'uint256' },
+          { name: 'gauge_alive', type: 'bool' },
+          { name: 'fee', type: 'address' },
+          { name: 'bribe', type: 'address' },
+          { name: 'factory', type: 'address' },
+          { name: 'emissions', type: 'uint256' },
+          { name: 'emissions_token', type: 'address' },
+          { name: 'pool_fee', type: 'uint256' },
+          { name: 'unstaked_fee', type: 'uint256' },
+          { name: 'token0_fees', type: 'uint256' },
+          { name: 'token1_fees', type: 'uint256' }
+        ],
+        name: '',
+        type: 'tuple[]'
+      }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  }
+] as const;
 
 async function discoverAllTokens() {
   try {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const sugar = new ethers.Contract(SUGAR_ADDRESS, SUGAR_ABI, provider);
+    const publicClient = createPublicClient({
+      chain: optimism,
+      transport: http(RPC_URL),
+    });
     
     console.log('Discovering all tokens from Sugar contract...');
-    console.log('Chain ID:', await provider.getNetwork().then(n => n.chainId));
+    console.log('Chain ID:', optimism.id);
     
     const uniqueTokens = new Set<string>();
     const batchSize = 25;
@@ -22,7 +67,12 @@ async function discoverAllTokens() {
     for (let i = 0; i < 50; i++) {
       try {
         const offset = i * batchSize;
-        const pools = await (sugar as any).all(batchSize, offset);
+        const pools = await publicClient.readContract({
+          address: SUGAR_ADDRESS as Address,
+          abi: SUGAR_ABI,
+          functionName: 'all',
+          args: [BigInt(batchSize), BigInt(offset)],
+        });
         
         if (pools.length === 0) {
           console.log(`No more pools after batch ${i}`);

@@ -1,11 +1,53 @@
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { type Address } from 'viem';
 import { TokenInfo, VeloPoolData } from './types';
-import { logger } from '../utils';
+import { logger, getPublicClient } from '../utils';
 
+// Sugar ABI - complex tuple needs to be defined as a proper ABI object for viem
 const SUGAR_ABI = [
-  'function all(uint256 limit, uint256 offset) view returns (tuple(address lp, string symbol, uint8 decimals, uint256 liquidity, int24 type, int24 tick, uint160 sqrt_ratio, address token0, uint256 reserve0, uint256 staked0, address token1, uint256 reserve1, uint256 staked1, address gauge, uint256 gauge_liquidity, bool gauge_alive, address fee, address bribe, address factory, uint256 emissions, address emissions_token, uint256 pool_fee, uint256 unstaked_fee, uint256 token0_fees, uint256 token1_fees)[])',
-];
+  {
+    inputs: [
+      { name: 'limit', type: 'uint256' },
+      { name: 'offset', type: 'uint256' }
+    ],
+    name: 'all',
+    outputs: [
+      {
+        components: [
+          { name: 'lp', type: 'address' },
+          { name: 'symbol', type: 'string' },
+          { name: 'decimals', type: 'uint8' },
+          { name: 'liquidity', type: 'uint256' },
+          { name: 'type', type: 'int24' },
+          { name: 'tick', type: 'int24' },
+          { name: 'sqrt_ratio', type: 'uint160' },
+          { name: 'token0', type: 'address' },
+          { name: 'reserve0', type: 'uint256' },
+          { name: 'staked0', type: 'uint256' },
+          { name: 'token1', type: 'address' },
+          { name: 'reserve1', type: 'uint256' },
+          { name: 'staked1', type: 'uint256' },
+          { name: 'gauge', type: 'address' },
+          { name: 'gauge_liquidity', type: 'uint256' },
+          { name: 'gauge_alive', type: 'bool' },
+          { name: 'fee', type: 'address' },
+          { name: 'bribe', type: 'address' },
+          { name: 'factory', type: 'address' },
+          { name: 'emissions', type: 'uint256' },
+          { name: 'emissions_token', type: 'address' },
+          { name: 'pool_fee', type: 'uint256' },
+          { name: 'unstaked_fee', type: 'uint256' },
+          { name: 'token0_fees', type: 'uint256' },
+          { name: 'token1_fees', type: 'uint256' }
+        ],
+        name: '',
+        type: 'tuple[]'
+      }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  }
+] as const;
 
 interface SugarPoolData {
   lp: string;
@@ -39,16 +81,11 @@ export class VeloDiscovery {
   private chainId: number;
   private sugarAddress?: string;
   private apiUrl?: string;
-  private provider?: ethers.Provider;
 
-  constructor(chainId: number, sugarAddress?: string, apiUrl?: string, rpcUrl?: string) {
+  constructor(chainId: number, sugarAddress?: string, apiUrl?: string, _rpcUrl?: string) {
     this.chainId = chainId;
     this.sugarAddress = sugarAddress;
     this.apiUrl = apiUrl;
-    
-    if (rpcUrl && sugarAddress) {
-      this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    }
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
@@ -62,7 +99,7 @@ export class VeloDiscovery {
       }
       
       // If API fails or is not available, try on-chain discovery
-      if (tokens.length === 0 && this.sugarAddress && this.provider) {
+      if (tokens.length === 0 && this.sugarAddress) {
         const onChainTokens = await this.discoverFromContract();
         tokens.push(...onChainTokens);
       }
@@ -124,17 +161,13 @@ export class VeloDiscovery {
   private async discoverFromContract(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
     
-    if (!this.provider || !this.sugarAddress) {
+    if (!this.sugarAddress) {
       return tokens;
     }
 
-    try {
-      const sugar = new ethers.Contract(
-        this.sugarAddress,
-        SUGAR_ABI,
-        this.provider
-      );
+    const publicClient = getPublicClient(this.chainId);
 
+    try {
       const batchSize = 25;
       const maxBatches = 39; // Stop before batch 39 which fails on Optimism
       
@@ -146,11 +179,18 @@ export class VeloDiscovery {
           logger.debug(`Fetching batch ${i} (offset: ${offset}) from Sugar contract on chain ${this.chainId}`);
           
           // Add timeout to prevent hanging
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Sugar call timeout')), 10000)
           );
-          const poolsPromise = (sugar as any).all(batchSize, offset);
-          const pools: SugarPoolData[] = await Promise.race([poolsPromise, timeoutPromise]) as SugarPoolData[];
+          
+          const poolsPromise = publicClient.readContract({
+            address: this.sugarAddress as Address,
+            abi: SUGAR_ABI,
+            functionName: 'all',
+            args: [BigInt(batchSize), BigInt(offset)],
+          });
+          
+          const pools = await Promise.race([poolsPromise, timeoutPromise]) as SugarPoolData[];
           
           if (!pools || pools.length === 0) {
             logger.debug(`No more pools after batch ${i}`);
