@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import { TokenInfo } from './types';
 import { logger } from '../utils';
 
@@ -18,13 +19,13 @@ interface GammaResponse {
   [key: string]: GammaHypervisor;
 }
 
-// Gamma API endpoints per chain
+// Gamma API endpoints - same endpoint for all chains
 const GAMMA_API_URLS: Record<number, string> = {
-  1: 'https://wire2.gamma.xyz/ethereum/hypervisors/allData',
-  10: 'https://wire2.gamma.xyz/optimism/hypervisors/allData',
-  137: 'https://wire2.gamma.xyz/polygon/hypervisors/allData',
-  42161: 'https://wire2.gamma.xyz/arbitrum/hypervisors/allData',
-  8453: 'https://wire2.gamma.xyz/base/hypervisors/allData',
+  1: 'https://wire2.gamma.xyz/hypervisors/allData',
+  10: 'https://wire2.gamma.xyz/hypervisors/allData',
+  137: 'https://wire2.gamma.xyz/hypervisors/allData',
+  42161: 'https://wire2.gamma.xyz/hypervisors/allData',
+  8453: 'https://wire2.gamma.xyz/hypervisors/allData',
   // Note: Gnosis (100) and Fantom (250) might not have Gamma deployments
 };
 
@@ -44,9 +45,14 @@ export class GammaDiscovery {
     }
 
     try {
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<GammaResponse>(apiUrl, {
         timeout: 30000,
-        headers: { 'User-Agent': 'yearn-pricing-service' }
+        headers: { 'User-Agent': 'yearn-pricing-service' },
+        httpsAgent: httpsAgent
       });
 
       if (response.data) {

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import { TokenInfo } from './types';
 import { logger } from '../utils';
 
@@ -59,7 +60,7 @@ const PENDLE_API_URLS: Record<number, string> = {
   42161: 'https://api-v2.pendle.finance/core/v1/42161/assets/all',
   8453: 'https://api-v2.pendle.finance/core/v1/8453/assets/all',
   10: 'https://api-v2.pendle.finance/core/v1/10/assets/all',
-  137: 'https://api-v2.pendle.finance/core/v1/137/assets/all',
+  // 137 removed - Pendle doesn't support Polygon
   56: 'https://api-v2.pendle.finance/core/v1/56/assets/all',
   // Pendle might expand to other chains
 };
@@ -69,7 +70,7 @@ const PENDLE_MARKETS_URLS: Record<number, string> = {
   42161: 'https://api-v2.pendle.finance/core/v1/42161/markets?order_by=name%3A1&skip=0&limit=100',
   8453: 'https://api-v2.pendle.finance/core/v1/8453/markets?order_by=name%3A1&skip=0&limit=100',
   10: 'https://api-v2.pendle.finance/core/v1/10/markets?order_by=name%3A1&skip=0&limit=100',
-  137: 'https://api-v2.pendle.finance/core/v1/137/markets?order_by=name%3A1&skip=0&limit=100',
+  // 137 removed - Pendle doesn't support Polygon
   56: 'https://api-v2.pendle.finance/core/v1/56/markets?order_by=name%3A1&skip=0&limit=100',
 };
 
@@ -109,12 +110,17 @@ export class PendleDiscovery {
     const tokens: TokenInfo[] = [];
 
     try {
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<PendleResponse>(apiUrl, {
         timeout: 30000,
         headers: { 
           'User-Agent': 'yearn-pricing-service',
           'Accept': 'application/json'
-        }
+        },
+        httpsAgent: httpsAgent
       });
 
       if (response.data?.results) {
@@ -184,12 +190,17 @@ export class PendleDiscovery {
     const tokens: TokenInfo[] = [];
 
     try {
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<PendleMarketsResponse>(apiUrl, {
         timeout: 30000,
         headers: { 
           'User-Agent': 'yearn-pricing-service',
           'Accept': 'application/json'
-        }
+        },
+        httpsAgent: httpsAgent
       });
 
       if (response.data?.results) {

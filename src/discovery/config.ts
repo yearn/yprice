@@ -28,7 +28,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   10: {
     chainId: 10,
     veloSugarAddress: '0x3e532BC1998584fe18e357B5187897ad0110ED3A', // Updated to ydaemon's address
-    veloApiUrl: 'https://api.velodrome.finance/api/v3/pools',
+    // veloApiUrl removed - Velodrome doesn't have public API, using on-chain discovery
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     extraTokens: [
@@ -85,7 +85,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   8453: {
     chainId: 8453,
     veloSugarAddress: '0x2073D8035bB2b0F2e85aAF5a8732C6f397F9ff9b',
-    veloApiUrl: 'https://api.aerodrome.finance/api/v3/pools',
+    // veloApiUrl removed - Aerodrome doesn't have public API, using on-chain discovery
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH

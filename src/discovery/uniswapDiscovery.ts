@@ -84,11 +84,20 @@ export class UniswapDiscovery {
 
     try {
       // Get total number of pairs
-      const pairsLength = await publicClient.readContract({
-        address: factoryAddress as Address,
-        abi: V2_FACTORY_ABI,
-        functionName: 'allPairsLength',
-      }) as bigint;
+      let pairsLength: bigint;
+      try {
+        pairsLength = await publicClient.readContract({
+          address: factoryAddress as Address,
+          abi: V2_FACTORY_ABI,
+          functionName: 'allPairsLength',
+        }) as bigint;
+      } catch (error: any) {
+        if (error.message?.includes('returned no data') || error.message?.includes('reverted')) {
+          logger.debug(`Chain ${this.chainId}: Uniswap V2 factory doesn't support allPairsLength, skipping`);
+          return tokens;
+        }
+        throw error;
+      }
 
       const totalPairs = Number(pairsLength);
       // Limit to recent pairs to avoid too many calls

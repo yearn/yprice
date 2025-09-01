@@ -159,7 +159,10 @@ export class VeloDiscovery {
         }
       }
     } catch (error: any) {
-      logger.warn(`Velodrome API fetch failed for chain ${this.chainId}:`, error.message);
+      logger.warn(`Velodrome API fetch failed for chain ${this.chainId}: ${error.message}`);
+      if (error.response) {
+        logger.debug(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+      }
     }
 
     return tokens;
@@ -234,7 +237,7 @@ export class VeloDiscovery {
           }
         } catch (batchError: any) {
           // Log the error but continue trying next batches
-          logger.warn(`Velodrome Sugar batch ${i} failed on chain ${this.chainId}:`, batchError.message || batchError);
+          logger.warn(`Velodrome Sugar batch ${i} failed on chain ${this.chainId}: ${batchError.message || batchError}`);
           // Try reducing batch size if we hit gas limits
           if (i === 0) {
             logger.error(`First batch failed - Sugar contract may be incorrect or inaccessible`);
