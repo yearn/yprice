@@ -6,6 +6,7 @@ import { progressTracker } from '../utils/progressTracker';
 import { betterLogger } from '../utils/betterLogger';
 import tokenDiscoveryService from '../discovery/tokenDiscoveryService';
 import { chunk } from 'lodash';
+import { zeroAddress } from 'viem';
 
 export class PriceService {
   private fetcher = new PriceFetcherOrchestrator();
@@ -32,9 +33,9 @@ export class PriceService {
       if (wethAddress) {
         const wethPrice = prices.get(wethAddress);
         if (wethPrice) {
-          prices.set('0x0000000000000000000000000000000000000000', {
+          prices.set(zeroAddress, {
             ...wethPrice,
-            address: '0x0000000000000000000000000000000000000000',
+            address: zeroAddress,
           });
         }
       }
@@ -104,8 +105,8 @@ export class PriceService {
           
           // Get final price count after all batches complete
           const storage = getPriceStorage();
-          const chainPrices = storage.getPricesByChain(chainId);
-          const pricesFound = chainPrices.length;
+          const { asSlice } = storage.listPrices(chainId);
+          const pricesFound = asSlice.length;
           
           const chainDuration = Date.now() - chainStartTime;
           betterLogger.chainComplete(chainId, tokens.length, pricesFound, chainDuration);
@@ -163,6 +164,17 @@ export class PriceService {
 
   setVerboseLogging(verbose: boolean): void {
     logger.info(`Verbose logging ${verbose ? 'enabled' : 'disabled'}`);
+  }
+
+  async fetchOnce(): Promise<void> {
+    logger.info('🔄 Starting one-time price refresh...');
+    try {
+      await this.fetchDiscoveredTokens(true);
+      logger.info('✅ Price refresh completed successfully');
+    } catch (error) {
+      logger.error('❌ Price refresh failed:', error);
+      throw error;
+    }
   }
 }
 

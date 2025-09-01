@@ -1,4 +1,4 @@
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { ERC20Token, Price } from '../models';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 import { DISCOVERY_CONFIGS } from '../discovery/config';
@@ -225,10 +225,10 @@ export class VelodromeFetcher {
       const lpTokens = new Set<string>();
       for (const pool of allPools) {
         lpTokens.add(pool.lp.toLowerCase());
-        if (pool.token0 && pool.token0 !== '0x0000000000000000000000000000000000000000') {
+        if (pool.token0 && pool.token0 !== zeroAddress) {
           uniqueTokens.add(pool.token0.toLowerCase());
         }
-        if (pool.token1 && pool.token1 !== '0x0000000000000000000000000000000000000000') {
+        if (pool.token1 && pool.token1 !== zeroAddress) {
           uniqueTokens.add(pool.token1.toLowerCase());
         }
       }

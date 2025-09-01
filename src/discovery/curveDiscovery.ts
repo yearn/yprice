@@ -1,6 +1,6 @@
 import axios from 'axios';
 import https from 'https';
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { TokenInfo, CurvePoolData } from './types';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 
@@ -76,7 +76,7 @@ export class CurveDiscovery {
 
           // Add coin tokens
           for (const coin of pool.coins || []) {
-            if (coin && typeof coin === 'object' && coin.address && coin.address !== '0x0000000000000000000000000000000000000000') {
+            if (coin && typeof coin === 'object' && coin.address && coin.address !== zeroAddress) {
               tokens.push({
                 address: coin.address.toLowerCase(),
                 chainId: this.chainId,
@@ -169,7 +169,7 @@ export class CurveDiscovery {
         if (result && result.status === 'success' && result.result) {
           const coins = result.result;
           for (const coin of coins) {
-            if (coin && coin !== '0x0000000000000000000000000000000000000000') {
+            if (coin && coin !== zeroAddress) {
               tokens.push({
                 address: coin.toLowerCase(),
                 chainId: this.chainId,

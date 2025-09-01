@@ -2,6 +2,7 @@ import axios from 'axios';
 import https from 'https';
 import { TokenInfo } from './types';
 import { logger } from '../utils';
+import { zeroAddress } from 'viem';
 
 // Balancer subgraph endpoints - Using dev endpoints to avoid rate limits
 const BALANCER_SUBGRAPHS: Record<number, string> = {
@@ -115,7 +116,7 @@ export class BalancerDiscovery {
 
           // Add underlying tokens
           for (const token of pool.tokens || []) {
-            if (token.address && token.address !== '0x0000000000000000000000000000000000000000') {
+            if (token.address && token.address !== zeroAddress) {
               tokens.push({
                 address: token.address.toLowerCase(),
                 chainId: this.chainId,
@@ -195,7 +196,7 @@ export class BalancerDiscovery {
 
           // Add pool tokens
           for (const token of pool.poolTokens || []) {
-            if (token.address && token.address !== '0x0000000000000000000000000000000000000000') {
+            if (token.address && token.address !== zeroAddress) {
               tokens.push({
                 address: token.address.toLowerCase(),
                 chainId: this.chainId,

@@ -1,9 +1,10 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import * as fs from 'fs';
+import * as path from 'path';
 import { initializePriceStorage } from './storage';
 import priceRoutes from './api/routes';
-import priceService from './services/priceService';
 import { logger } from './utils';
 import { SUPPORTED_CHAINS } from './models';
 
@@ -67,10 +68,26 @@ async function startServer() {
     logger.info('Price storage initialized');
     logger.info(`Cache TTL: ${cacheTTL} seconds`);
     
-    // Start periodic price fetching
-    // Default to 5 minutes (300000ms) to allow time for all chains to be processed
-    const fetchInterval = parseInt(process.env.FETCH_INTERVAL_MS || '300000');
-    priceService.startPeriodicFetch(fetchInterval);
+    // Running in static mode - serving cached data from disk
+    logger.info('🔒 Running in static mode - serving cached prices from disk');
+    logger.info('💡 To refresh prices, run: bun run refresh');
+    
+    // Show last update time from data files
+    try {
+      const dataDir = path.join(process.cwd(), 'data/prices');
+      
+      if (fs.existsSync(dataDir)) {
+        const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.json'));
+        if (files.length > 0) {
+          const stats = files.map(f => fs.statSync(path.join(dataDir, f)));
+          const mostRecent = Math.max(...stats.map(s => s.mtime.getTime()));
+          const lastUpdate = new Date(mostRecent);
+          logger.info(`📅 Last price update: ${lastUpdate.toLocaleString()}`);
+        }
+      }
+    } catch (err) {
+      // Ignore errors in getting last update time
+    }
     
     app.listen(PORT, () => {
       logger.info(`Yearn Pricing Service running on port ${PORT}`);
@@ -85,13 +102,11 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGINT', () => {
   logger.info('Shutting down gracefully...');
-  priceService.stopPeriodicFetch();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   logger.info('Shutting down gracefully...');
-  priceService.stopPeriodicFetch();
   process.exit(0);
 });
 

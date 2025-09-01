@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { TokenInfo } from './types';
-import { logger, getPublicClient, batchReadContracts } from '../utils';
+import { logger, getPublicClient, batchReadContracts, discoveryPriceCache } from '../utils';
 import { uniqBy } from 'lodash';
 
 interface KongVault {
@@ -117,11 +117,22 @@ export class YearnDiscovery {
               chainId: this.chainId,
               source: 'yearn-vault',
             });
+            
+            // Cache pricePerShare data for the vault
+            if (vault.pricePerShare) {
+              const pricePerShare = BigInt(vault.pricePerShare);
+              const underlyingAddress = vault.asset?.address || vault.token;
+              
+              discoveryPriceCache.set(this.chainId, vault.address, undefined, 'yearn-vault', {
+                pricePerShare,
+                underlyingAddress: underlyingAddress?.toLowerCase(),
+              });
+            }
           }
 
           // Add underlying token (from asset field for v3 or token field for v2)
           const tokenAddress = vault.asset?.address || vault.token;
-          if (tokenAddress && tokenAddress !== '0x0000000000000000000000000000000000000000') {
+          if (tokenAddress && tokenAddress !== zeroAddress) {
             tokens.push({
               address: tokenAddress.toLowerCase(),
               chainId: this.chainId,
@@ -167,7 +178,7 @@ export class YearnDiscovery {
         const result = tokenResults[index];
         if (!result || result.status !== 'success' || !result.result) {
           v3VaultAddresses.push(vaultAddress);
-        } else if (result.result && result.result !== '0x0000000000000000000000000000000000000000') {
+        } else if (result.result && result.result !== zeroAddress) {
           tokens.push({
             address: result.result.toLowerCase(),
             chainId: this.chainId,
@@ -189,7 +200,7 @@ export class YearnDiscovery {
         v3AssetResults.forEach((result) => {
           if (result && result.status === 'success' && result.result) {
             const underlyingAddress = result.result;
-            if (underlyingAddress && underlyingAddress !== '0x0000000000000000000000000000000000000000') {
+            if (underlyingAddress && underlyingAddress !== zeroAddress) {
               tokens.push({
                 address: underlyingAddress.toLowerCase(),
                 chainId: this.chainId,

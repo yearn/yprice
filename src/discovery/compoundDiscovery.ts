@@ -1,4 +1,4 @@
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { TokenInfo } from './types';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 
@@ -64,7 +64,7 @@ export class CompoundDiscovery {
         const result = underlyingResults[index];
         if (result && result.status === 'success' && result.result) {
           const underlying = result.result;
-          if (underlying && underlying !== '0x0000000000000000000000000000000000000000') {
+          if (underlying && underlying !== zeroAddress) {
             tokens.push({
               address: underlying.toLowerCase(),
               chainId: this.chainId,

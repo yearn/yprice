@@ -4,6 +4,7 @@ import { ERC20Token, Price, LlamaPrice, PriceSource } from '../models';
 import { parseUnits, addressEquals, chunk, logger } from '../utils';
 import { priceCache } from '../utils/priceCache';
 import { partition, forEach, find, reduce } from 'lodash';
+import { zeroAddress } from 'viem';
 
 const LLAMA_CHAIN_NAMES: Record<number, string> = {
   1: 'ethereum',
@@ -209,7 +210,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       const mainnetName = KATANA_TOKEN_NAMES_TO_MAINNET[token.name];
       if (mainnetName) {
         acc.push({
-          address: '0x0000000000000000000000000000000000000000',
+          address: zeroAddress,
           symbol: token.symbol,
           name: mainnetName,
           decimals: token.decimals,

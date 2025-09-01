@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ERC20Token, Price } from '../models';
-import { logger } from '../utils';
+import { logger, discoveryPriceCache } from '../utils';
 
 interface PendleMarket {
   address: string;
@@ -68,6 +68,32 @@ export class PendleFetcher {
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>();
     
+    // First check cache for prices
+    const { cached, uncached } = tokens.reduce(
+      (acc, token) => {
+        const cachedPrice = discoveryPriceCache.get(chainId, token.address);
+        if (cachedPrice && cachedPrice.price) {
+          priceMap.set(token.address.toLowerCase(), {
+            address: token.address.toLowerCase(),
+            price: cachedPrice.price,
+            source: cachedPrice.source,
+          });
+          return { ...acc, cached: [...acc.cached, token] };
+        }
+        return { ...acc, uncached: [...acc.uncached, token] };
+      },
+      { cached: [] as ERC20Token[], uncached: [] as ERC20Token[] }
+    );
+    
+    if (cached.length > 0) {
+      logger.debug(`Pendle: Using ${cached.length} cached prices for chain ${chainId}`);
+    }
+    
+    // If all prices are cached, return early
+    if (uncached.length === 0) {
+      return priceMap;
+    }
+    
     const marketsUrl = PENDLE_MARKETS_URLS[chainId];
     const assetsUrl = PENDLE_ASSETS_URLS[chainId];
     
@@ -75,7 +101,7 @@ export class PendleFetcher {
       return priceMap;
     }
 
-    const tokenAddresses = new Set(tokens.map(t => t.address.toLowerCase()));
+    const tokenAddresses = new Set(uncached.map(t => t.address.toLowerCase()));
 
     try {
       // Fetch prices from markets endpoint
@@ -88,7 +114,7 @@ export class PendleFetcher {
         await this.fetchAssetPrices(assetsUrl, tokenAddresses, priceMap);
       }
 
-      logger.debug(`Pendle: Found ${priceMap.size} prices for chain ${chainId}`);
+      logger.debug(`Pendle: Total ${priceMap.size} prices for chain ${chainId} (${cached.length} cached, ${priceMap.size - cached.length} fetched)`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.warn(`Pendle fetch failed for chain ${chainId}: ${errorMsg}`);

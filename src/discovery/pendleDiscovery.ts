@@ -1,7 +1,8 @@
 import axios from 'axios';
 import https from 'https';
 import { TokenInfo } from './types';
-import { logger } from '../utils';
+import { logger, discoveryPriceCache } from '../utils';
+import { zeroAddress } from 'viem';
 
 interface PendleAsset {
   id: string;
@@ -11,17 +12,29 @@ interface PendleAsset {
   symbol: string;
   decimals: number;
   expiry?: string;
+  price?: {
+    usd: number;
+  };
   pt?: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
   yt?: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
   sy?: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
   underlyingAsset?: {
     address: string;
@@ -36,17 +49,29 @@ interface PendleResponse {
 interface PendleMarket {
   address: string;
   chainId: number;
+  price?: {
+    usd: number;
+  };
   pt: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
   yt: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
   sy: {
     address: string;
     symbol: string;
+    price?: {
+      usd: number;
+    };
   };
 }
 
@@ -60,9 +85,7 @@ const PENDLE_API_URLS: Record<number, string> = {
   42161: 'https://api-v2.pendle.finance/core/v1/42161/assets/all',
   8453: 'https://api-v2.pendle.finance/core/v1/8453/assets/all',
   10: 'https://api-v2.pendle.finance/core/v1/10/assets/all',
-  // 137 removed - Pendle doesn't support Polygon
   56: 'https://api-v2.pendle.finance/core/v1/56/assets/all',
-  // Pendle might expand to other chains
 };
 
 const PENDLE_MARKETS_URLS: Record<number, string> = {
@@ -70,7 +93,6 @@ const PENDLE_MARKETS_URLS: Record<number, string> = {
   42161: 'https://api-v2.pendle.finance/core/v1/42161/markets?order_by=name%3A1&skip=0&limit=100',
   8453: 'https://api-v2.pendle.finance/core/v1/8453/markets?order_by=name%3A1&skip=0&limit=100',
   10: 'https://api-v2.pendle.finance/core/v1/10/markets?order_by=name%3A1&skip=0&limit=100',
-  // 137 removed - Pendle doesn't support Polygon
   56: 'https://api-v2.pendle.finance/core/v1/56/markets?order_by=name%3A1&skip=0&limit=100',
 };
 
@@ -135,39 +157,63 @@ export class PendleDiscovery {
             source: 'pendle-asset',
           });
 
+          // Cache price if available
+          if (asset.price?.usd) {
+            const price = BigInt(Math.floor(asset.price.usd * 1e6));
+            discoveryPriceCache.set(this.chainId, asset.address, price, 'pendle-asset');
+          }
+
           // Add PT (Principal Token) if exists
-          if (asset.pt?.address && asset.pt.address !== '0x0000000000000000000000000000000000000000') {
+          if (asset.pt?.address && asset.pt.address !== zeroAddress) {
             tokens.push({
               address: asset.pt.address.toLowerCase(),
               chainId: this.chainId,
               symbol: asset.pt.symbol,
               source: 'pendle-pt',
             });
+            
+            // Cache PT price if available
+            if (asset.pt.price?.usd) {
+              const price = BigInt(Math.floor(asset.pt.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, asset.pt.address, price, 'pendle-pt');
+            }
           }
 
           // Add YT (Yield Token) if exists
-          if (asset.yt?.address && asset.yt.address !== '0x0000000000000000000000000000000000000000') {
+          if (asset.yt?.address && asset.yt.address !== zeroAddress) {
             tokens.push({
               address: asset.yt.address.toLowerCase(),
               chainId: this.chainId,
               symbol: asset.yt.symbol,
               source: 'pendle-yt',
             });
+            
+            // Cache YT price if available
+            if (asset.yt.price?.usd) {
+              const price = BigInt(Math.floor(asset.yt.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, asset.yt.address, price, 'pendle-yt');
+            }
           }
 
           // Add SY (Standardized Yield) token if exists
-          if (asset.sy?.address && asset.sy.address !== '0x0000000000000000000000000000000000000000') {
+          if (asset.sy?.address && asset.sy.address !== zeroAddress) {
             tokens.push({
               address: asset.sy.address.toLowerCase(),
               chainId: this.chainId,
               symbol: asset.sy.symbol,
               source: 'pendle-sy',
             });
+            
+            // Cache SY price if available
+            if (asset.sy.price?.usd) {
+              const price = BigInt(Math.floor(asset.sy.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, asset.sy.address, price, 'pendle-sy');
+            }
           }
 
           // Add underlying asset if exists
           if (asset.underlyingAsset?.address && 
-              asset.underlyingAsset.address !== '0x0000000000000000000000000000000000000000') {
+              asset.underlyingAsset.address !== zeroAddress) {
             tokens.push({
               address: asset.underlyingAsset.address.toLowerCase(),
               chainId: this.chainId,
@@ -212,36 +258,60 @@ export class PendleDiscovery {
               chainId: this.chainId,
               source: 'pendle-market',
             });
+            
+            // Cache market price if available
+            if (market.price?.usd) {
+              const price = BigInt(Math.floor(market.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, market.address, price, 'pendle-market');
+            }
           }
 
           // Add PT (Principal Token)
-          if (market.pt?.address && market.pt.address !== '0x0000000000000000000000000000000000000000') {
+          if (market.pt?.address && market.pt.address !== zeroAddress) {
             tokens.push({
               address: market.pt.address.toLowerCase(),
               chainId: this.chainId,
               symbol: market.pt.symbol,
               source: 'pendle-pt',
             });
+            
+            // Cache PT price if available
+            if (market.pt.price?.usd) {
+              const price = BigInt(Math.floor(market.pt.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, market.pt.address, price, 'pendle-pt');
+            }
           }
 
           // Add YT (Yield Token)
-          if (market.yt?.address && market.yt.address !== '0x0000000000000000000000000000000000000000') {
+          if (market.yt?.address && market.yt.address !== zeroAddress) {
             tokens.push({
               address: market.yt.address.toLowerCase(),
               chainId: this.chainId,
               symbol: market.yt.symbol,
               source: 'pendle-yt',
             });
+            
+            // Cache YT price if available
+            if (market.yt.price?.usd) {
+              const price = BigInt(Math.floor(market.yt.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, market.yt.address, price, 'pendle-yt');
+            }
           }
 
           // Add SY (Standardized Yield) token
-          if (market.sy?.address && market.sy.address !== '0x0000000000000000000000000000000000000000') {
+          if (market.sy?.address && market.sy.address !== zeroAddress) {
             tokens.push({
               address: market.sy.address.toLowerCase(),
               chainId: this.chainId,
               symbol: market.sy.symbol,
               source: 'pendle-sy',
             });
+            
+            // Cache SY price if available
+            if (market.sy.price?.usd) {
+              const price = BigInt(Math.floor(market.sy.price.usd * 1e6));
+              discoveryPriceCache.set(this.chainId, market.sy.address, price, 'pendle-sy');
+            }
           }
         }
       }

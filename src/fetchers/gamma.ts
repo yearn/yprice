@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ERC20Token, Price } from '../models';
-import { logger } from '../utils';
+import { logger, discoveryPriceCache } from '../utils';
 
 interface GammaHypervisor {
   id: string;
@@ -33,6 +33,32 @@ export class GammaFetcher {
       return priceMap;
     }
 
+    // First check cache for prices
+    const { cached, uncached } = tokens.reduce(
+      (acc, token) => {
+        const cachedPrice = discoveryPriceCache.get(chainId, token.address);
+        if (cachedPrice && cachedPrice.price) {
+          priceMap.set(token.address.toLowerCase(), {
+            address: token.address.toLowerCase(),
+            price: cachedPrice.price,
+            source: cachedPrice.source,
+          });
+          return { ...acc, cached: [...acc.cached, token] };
+        }
+        return { ...acc, uncached: [...acc.uncached, token] };
+      },
+      { cached: [] as ERC20Token[], uncached: [] as ERC20Token[] }
+    );
+    
+    if (cached.length > 0) {
+      logger.debug(`Gamma: Using ${cached.length} cached prices for chain ${chainId}`);
+    }
+    
+    // If all prices are cached, return early
+    if (uncached.length === 0) {
+      return priceMap;
+    }
+
     try {
       logger.debug(`Gamma: Fetching LP prices for chain ${chainId}`);
       
@@ -46,7 +72,7 @@ export class GammaFetcher {
         return priceMap;
       }
 
-      const tokenAddresses = new Set(tokens.map(t => t.address.toLowerCase()));
+      const tokenAddresses = new Set(uncached.map(t => t.address.toLowerCase()));
 
       // Process hypervisor data
       for (const [address, hypervisor] of Object.entries(response.data)) {
@@ -75,7 +101,7 @@ export class GammaFetcher {
         }
       }
 
-      logger.debug(`Gamma: Found ${priceMap.size} LP prices for chain ${chainId}`);
+      logger.debug(`Gamma: Total ${priceMap.size} LP prices for chain ${chainId} (${cached.length} cached, ${priceMap.size - cached.length} fetched)`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       logger.warn(`Gamma fetch failed: ${errorMsg}`);

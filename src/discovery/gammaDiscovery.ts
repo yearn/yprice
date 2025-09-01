@@ -1,7 +1,8 @@
 import axios from 'axios';
 import https from 'https';
 import { TokenInfo } from './types';
-import { logger } from '../utils';
+import { logger, discoveryPriceCache } from '../utils';
+import { zeroAddress } from 'viem';
 
 interface GammaHypervisor {
   id: string;
@@ -26,7 +27,6 @@ const GAMMA_API_URLS: Record<number, string> = {
   137: 'https://wire2.gamma.xyz/hypervisors/allData',
   42161: 'https://wire2.gamma.xyz/hypervisors/allData',
   8453: 'https://wire2.gamma.xyz/hypervisors/allData',
-  // Note: Gnosis (100) and Fantom (250) might not have Gamma deployments
 };
 
 export class GammaDiscovery {
@@ -64,8 +64,24 @@ export class GammaDiscovery {
             source: 'gamma-lp',
           });
 
+          // Cache price data for the LP token
+          const tvlUSD = parseFloat(hypervisor.tvlUSD || '0');
+          const totalSupply = parseFloat(hypervisor.totalSupply || '0');
+          
+          if (tvlUSD > 0 && totalSupply > 0) {
+            const pricePerToken = tvlUSD / totalSupply;
+            const price = BigInt(Math.floor(pricePerToken * 1e6));
+            
+            if (price > BigInt(0)) {
+              discoveryPriceCache.set(this.chainId, address, price, 'gamma', {
+                tvlUSD: hypervisor.tvlUSD,
+                totalSupply: hypervisor.totalSupply,
+              });
+            }
+          }
+
           // Add token0
-          if (hypervisor.token0 && hypervisor.token0 !== '0x0000000000000000000000000000000000000000') {
+          if (hypervisor.token0 && hypervisor.token0 !== zeroAddress) {
             tokens.push({
               address: hypervisor.token0.toLowerCase(),
               chainId: this.chainId,
@@ -74,7 +90,7 @@ export class GammaDiscovery {
           }
 
           // Add token1
-          if (hypervisor.token1 && hypervisor.token1 !== '0x0000000000000000000000000000000000000000') {
+          if (hypervisor.token1 && hypervisor.token1 !== zeroAddress) {
             tokens.push({
               address: hypervisor.token1.toLowerCase(),
               chainId: this.chainId,
@@ -83,7 +99,7 @@ export class GammaDiscovery {
           }
 
           // Also add the pool address if it exists
-          if (hypervisor.pool && hypervisor.pool !== '0x0000000000000000000000000000000000000000') {
+          if (hypervisor.pool && hypervisor.pool !== zeroAddress) {
             tokens.push({
               address: hypervisor.pool.toLowerCase(),
               chainId: this.chainId,

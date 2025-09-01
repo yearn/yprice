@@ -1,6 +1,6 @@
 import axios from 'axios';
 import https from 'https';
-import { type Address } from 'viem';
+import { zeroAddress, type Address } from 'viem';
 import { TokenInfo, VeloPoolData } from './types';
 import { logger, getPublicClient } from '../utils';
 
@@ -146,7 +146,7 @@ export class VeloDiscovery {
           });
 
           // Add token0
-          if (pool.token0 && pool.token0 !== '0x0000000000000000000000000000000000000000') {
+          if (pool.token0 && pool.token0 !== zeroAddress) {
             tokens.push({
               address: pool.token0.toLowerCase(),
               chainId: this.chainId,
@@ -155,7 +155,7 @@ export class VeloDiscovery {
           }
 
           // Add token1
-          if (pool.token1 && pool.token1 !== '0x0000000000000000000000000000000000000000') {
+          if (pool.token1 && pool.token1 !== zeroAddress) {
             tokens.push({
               address: pool.token1.toLowerCase(),
               chainId: this.chainId,
@@ -230,7 +230,7 @@ export class VeloDiscovery {
             });
 
             // Add token0
-            if (pool.token0 && pool.token0 !== '0x0000000000000000000000000000000000000000') {
+            if (pool.token0 && pool.token0 !== zeroAddress) {
               tokens.push({
                 address: pool.token0.toLowerCase(),
                 chainId: this.chainId,
@@ -239,7 +239,7 @@ export class VeloDiscovery {
             }
 
             // Add token1
-            if (pool.token1 && pool.token1 !== '0x0000000000000000000000000000000000000000') {
+            if (pool.token1 && pool.token1 !== zeroAddress) {
               tokens.push({
                 address: pool.token1.toLowerCase(),
                 chainId: this.chainId,

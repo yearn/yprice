@@ -1,4 +1,4 @@
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { TokenInfo } from './types';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 
@@ -148,7 +148,7 @@ export class AAVEDiscovery {
         if (result && result.status === 'success' && result.result) {
           const reserveData = result.result;
           
-          if (reserveData.aTokenAddress && reserveData.aTokenAddress !== '0x0000000000000000000000000000000000000000') {
+          if (reserveData.aTokenAddress && reserveData.aTokenAddress !== zeroAddress) {
             tokens.push({
               address: reserveData.aTokenAddress.toLowerCase(),
               chainId: this.chainId,
@@ -157,7 +157,7 @@ export class AAVEDiscovery {
           }
           
           // Also add debt tokens if needed
-          if (reserveData.variableDebtTokenAddress && reserveData.variableDebtTokenAddress !== '0x0000000000000000000000000000000000000000') {
+          if (reserveData.variableDebtTokenAddress && reserveData.variableDebtTokenAddress !== zeroAddress) {
             tokens.push({
               address: reserveData.variableDebtTokenAddress.toLowerCase(),
               chainId: this.chainId,

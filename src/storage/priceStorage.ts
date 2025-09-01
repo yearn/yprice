@@ -38,21 +38,44 @@ export class PriceStorage {
         return;
       }
 
-      Object.values(SUPPORTED_CHAINS).forEach(({ id }) => {
+      const loadedCounts = Object.values(SUPPORTED_CHAINS).map(({ id }) => {
         const backupFile = path.join(this.backupDir, `chain_${id}.json`);
-        if (!fs.existsSync(backupFile)) return;
+        if (!fs.existsSync(backupFile)) return 0;
         
         const cache = this.caches.get(id);
-        if (!cache) return;
+        if (!cache) return 0;
         
         const prices: Record<string, PriceCacheEntry> = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
         
-        Object.entries(prices).forEach(([address, price]) => {
+        const loadedPrices = Object.entries(prices).filter(([address, price]) => {
           if (typeof price.price === 'string') price.price = BigInt(price.price);
-          const remainingTTL = Math.max(0, this.cacheTTL * 1000 - (Date.now() - price.timestamp));
-          if (remainingTTL > 0) cache.set(address.toLowerCase(), price, remainingTTL / 1000);
-        });
+          
+          // If cacheTTL is 0 (never expire), set without TTL
+          // Otherwise calculate remaining TTL
+          if (this.cacheTTL === 0) {
+            cache.set(address.toLowerCase(), price);
+            return true;
+          } else {
+            const remainingTTL = Math.max(0, this.cacheTTL * 1000 - (Date.now() - price.timestamp));
+            if (remainingTTL > 0) {
+              cache.set(address.toLowerCase(), price, remainingTTL / 1000);
+              return true;
+            }
+            return false;
+          }
+        }).length;
+        
+        if (loadedPrices > 0) {
+          logger.info(`Loaded ${loadedPrices} prices for chain ${id} from backup`);
+        }
+        
+        return loadedPrices;
       });
+      
+      const totalLoaded = loadedCounts.reduce((sum, count) => sum + count, 0);
+      if (totalLoaded > 0) {
+        logger.info(`📊 Total prices loaded from backup: ${totalLoaded}`);
+      }
     } catch (error) {
       logger.warn(`Failed to load backup data: ${error instanceof Error ? error.message : 'Unknown'}`.substring(0, 100));
     }

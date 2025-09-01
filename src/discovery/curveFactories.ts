@@ -1,4 +1,4 @@
-import { parseAbi, type Address } from 'viem';
+import { parseAbi, zeroAddress, type Address } from 'viem';
 import { TokenInfo } from './types';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 
@@ -181,7 +181,7 @@ export class CurveFactoriesDiscovery {
       for (let i = 0; i < poolAddresses.length; i++) {
         const lpToken = lpTokenResults[i];
 
-        if (lpToken && lpToken !== '0x0000000000000000000000000000000000000000') {
+        if (lpToken && lpToken !== zeroAddress) {
           // Add LP token
           tokens.push({
             address: lpToken.toLowerCase(),
@@ -207,7 +207,7 @@ export class CurveFactoriesDiscovery {
           results.forEach((result) => {
             if (result && result.status === 'success' && result.result) {
               const gauge = result.result;
-              if (gauge && gauge !== '0x0000000000000000000000000000000000000000') {
+              if (gauge && gauge !== zeroAddress) {
                 tokens.push({
                   address: gauge.toLowerCase(),
                   chainId: this.chainId,
@@ -237,7 +237,7 @@ export class CurveFactoriesDiscovery {
         results.forEach((result) => {
           if (result && result.status === 'success' && result.result) {
             for (const coin of result.result) {
-              if (coin && coin !== '0x0000000000000000000000000000000000000000') {
+              if (coin && coin !== zeroAddress) {
                 tokens.push({
                   address: coin.toLowerCase(),
                   chainId: this.chainId,
