@@ -4,11 +4,11 @@ import { logger, getPublicClient } from '../utils';
 
 // Lens Price Oracle contract addresses by chain
 const LENS_ORACLE_ADDRESSES: Record<number, string> = {
-  1: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Ethereum
-  10: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Optimism
-  137: '0xbD0c7AaF0bF082712EbE919a9dD94b2d978f79A9', // Polygon
-  250: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Fantom
-  42161: '0x69EbE485a182dE951F37d3f86fD29a3eb47AE80c', // Arbitrum
+  1: '0x69ebe485a182de951f37d3f86fd29a3eb47ae80c', // Ethereum
+  10: '0xbd0c7aaf0bf082712ebe919a9dd94b2d978f79a9', // Optimism
+  137: '0xbd0c7aaf0bf082712ebe919a9dd94b2d978f79a9', // Polygon
+  250: '0x69ebe485a182de951f37d3f86fd29a3eb47ae80c', // Fantom
+  42161: '0x69ebe485a182de951f37d3f86fd29a3eb47ae80c', // Arbitrum
 };
 
 // Lens Oracle ABI

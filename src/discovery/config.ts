@@ -27,7 +27,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Optimism
   10: {
     chainId: 10,
-    veloSugarAddress: '0x3e532BC1998584fe18e357B5187897ad0110ED3A', // Updated to ydaemon's address
+    veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address 
     // veloApiUrl removed - Velodrome doesn't have public API, using on-chain discovery
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
@@ -84,7 +84,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Base
   8453: {
     chainId: 8453,
-    veloSugarAddress: '0x2073D8035bB2b0F2e85aAF5a8732C6f397F9ff9b',
+    veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address 
     // veloApiUrl removed - Aerodrome doesn't have public API, using on-chain discovery
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     extraTokens: [

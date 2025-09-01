@@ -39,7 +39,10 @@ const SUGAR_ABI = [
           { name: 'pool_fee', type: 'uint256' },
           { name: 'unstaked_fee', type: 'uint256' },
           { name: 'token0_fees', type: 'uint256' },
-          { name: 'token1_fees', type: 'uint256' }
+          { name: 'token1_fees', type: 'uint256' },
+          { name: 'nfpm', type: 'address' },
+          { name: 'alm', type: 'address' },
+          { name: 'root', type: 'address' }
         ],
         name: '',
         type: 'tuple[]'
@@ -76,6 +79,9 @@ interface SugarPoolData {
   unstaked_fee: bigint;
   token0_fees: bigint;
   token1_fees: bigint;
+  nfpm: string;
+  alm: string;
+  root: string;
 }
 
 export class VeloDiscovery {
