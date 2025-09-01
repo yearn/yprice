@@ -184,10 +184,16 @@ export class VeloDiscovery {
     const publicClient = getPublicClient(this.chainId);
 
     try {
-      const batchSize = 25;
-      const maxBatches = 39; // Stop before batch 39 which fails on Optimism
+      // Chain-specific configuration
+      const config = {
+        10: { batchSize: 25, maxBatches: 39, timeout: 15000 }, // Optimism
+        8453: { batchSize: 10, maxBatches: 20, timeout: 30000 }, // Base (smaller batches, longer timeout)
+      };
       
-      logger.debug(`Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId}`);
+      const chainConfig = config[this.chainId] || { batchSize: 25, maxBatches: 30, timeout: 20000 };
+      const { batchSize, maxBatches, timeout } = chainConfig;
+      
+      logger.debug(`Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId} (batch size: ${batchSize}, max batches: ${maxBatches})`);
 
       for (let i = 0; i < maxBatches; i++) {
         try {
@@ -196,7 +202,7 @@ export class VeloDiscovery {
           
           // Add timeout to prevent hanging
           const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Sugar call timeout')), 10000)
+            setTimeout(() => reject(new Error('Sugar call timeout')), timeout)
           );
           
           const poolsPromise = publicClient.readContract({
@@ -243,13 +249,28 @@ export class VeloDiscovery {
           }
         } catch (batchError: any) {
           // Log the error but continue trying next batches
-          logger.warn(`Velodrome Sugar batch ${i} failed on chain ${this.chainId}: ${batchError.message || batchError}`);
-          // Try reducing batch size if we hit gas limits
+          const errorMsg = batchError.message || batchError;
+          
+          // Only warn for timeout errors, error for other issues
+          if (errorMsg.includes('timeout')) {
+            logger.warn(`Velodrome Sugar batch ${i} failed on chain ${this.chainId}: ${errorMsg}`);
+          } else {
+            logger.error(`Velodrome Sugar batch ${i} failed on chain ${this.chainId}: ${errorMsg}`);
+          }
+          
+          // If first batch fails, it's likely a contract issue
           if (i === 0) {
             logger.error(`First batch failed - Sugar contract may be incorrect or inaccessible`);
             break;
           }
-          // Continue to next batch instead of breaking
+          
+          // For Base, if we've had multiple timeouts, skip remaining batches
+          if (this.chainId === 8453 && i > 5 && errorMsg.includes('timeout')) {
+            logger.warn(`Multiple timeouts on Base, skipping remaining batches to prevent blocking`);
+            break;
+          }
+          
+          // Continue to next batch
           continue;
         }
       }

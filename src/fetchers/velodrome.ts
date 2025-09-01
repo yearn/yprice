@@ -3,8 +3,11 @@ import { ERC20Token, Price } from '../models';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
 import { DISCOVERY_CONFIGS } from '../discovery/config';
 
-// Sugar Oracle contract address on Optimism
-const VELO_SUGAR_ORACLE_ADDRESS = '0xcA97e5653d775cA689BED5D0B4164b7656677011';
+// Sugar Oracle contract addresses
+const SUGAR_ORACLE_ADDRESSES: Record<number, string> = {
+  10: '0xcA97e5653d775cA689BED5D0B4164b7656677011', // Optimism (Velodrome)
+  8453: '0xB98fB4C9C99dE155cCbF5A14af0dBBAd96033D6f', // Base (Aerodrome)
+};
 
 // Rate connectors for Optimism (used by Sugar Oracle)
 const OPT_RATE_CONNECTORS = [
@@ -28,6 +31,17 @@ const OPT_RATE_CONNECTORS = [
   '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', // USDT
   '0x0b2c639c533813f4aa9d7837caf62653d097ff85', // USDC.e
   '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // USDC
+];
+
+// Rate connectors for Base (used by Sugar Oracle)
+const BASE_RATE_CONNECTORS = [
+  '0x9e53e88dcff56d3062510a745952dec4cefdff9e', // AERO
+  '0x4200000000000000000000000000000000000006', // WETH
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC
+  '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca', // USDbC
+  '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI
+  '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22', // cbETH
+  '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452', // wstETH
 ];
 
 // Sugar ABI - complex tuple needs to be defined as a proper ABI object for viem
@@ -120,8 +134,8 @@ export class VelodromeFetcher {
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>();
     
-    // Only support Optimism for now (can add Base later)
-    if (chainId !== 10) {
+    // Only support Optimism and Base
+    if (chainId !== 10 && chainId !== 8453) {
       return priceMap;
     }
 
@@ -134,22 +148,34 @@ export class VelodromeFetcher {
     }
 
     try {
-      // Get all pools from Sugar contract
-      const batchSize = 25;
-      const maxBatches = 39; // Stop before batch 39 which fails
+      // Get all pools from Sugar contract with chain-specific config
+      const chainConfig = {
+        10: { batchSize: 25, maxBatches: 39, timeout: 15000 }, // Optimism
+        8453: { batchSize: 10, maxBatches: 20, timeout: 30000 }, // Base
+      };
+      
+      const { batchSize, maxBatches, timeout } = chainConfig[chainId] || { batchSize: 25, maxBatches: 30, timeout: 20000 };
       const allPools: SugarPoolData[] = [];
       
-      logger.debug(`[Velodrome] Starting to fetch pools for chain ${chainId}`);
+      logger.debug(`[Velodrome] Starting to fetch pools for chain ${chainId} (batch size: ${batchSize}, max: ${maxBatches})`);
       
       for (let i = 0; i < maxBatches; i++) {
         try {
           const offset = i * batchSize;
-          const pools = await publicClient.readContract({
+          
+          // Add timeout to prevent hanging
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error(`Sugar call timeout after ${timeout}ms`)), timeout)
+          );
+          
+          const poolsPromise = publicClient.readContract({
             address: config.veloSugarAddress as Address,
             abi: SUGAR_ABI,
             functionName: 'all',
             args: [BigInt(batchSize), BigInt(offset)],
-          }) as SugarPoolData[];
+          });
+          
+          const pools = await Promise.race([poolsPromise, timeoutPromise]) as SugarPoolData[];
           
           if (!pools || pools.length === 0) {
             logger.debug(`[Velodrome] Batch ${i}: No more pools found`);
@@ -162,12 +188,27 @@ export class VelodromeFetcher {
           if (pools.length < batchSize) {
             break;
           }
-        } catch (error) {
+        } catch (error: any) {
+          const errorMsg = error.message || error;
+          
           if (i === 0) {
-            logger.error('[Velodrome] Failed to fetch first batch from Sugar contract:', error);
+            logger.error('[Velodrome] Failed to fetch first batch from Sugar contract:', errorMsg);
             return priceMap;
           }
-          logger.debug(`[Velodrome] Batch ${i} failed, stopping:`, error);
+          
+          // For timeout errors, just warn and continue
+          if (errorMsg.includes('timeout')) {
+            logger.warn(`[Velodrome] Batch ${i} timed out on chain ${chainId}, continuing...`);
+            
+            // For Base, stop if we hit too many timeouts
+            if (chainId === 8453 && i > 5) {
+              logger.warn(`[Velodrome] Multiple timeouts on Base, stopping to prevent blocking`);
+              break;
+            }
+            continue;
+          }
+          
+          logger.error(`[Velodrome] Batch ${i} failed:`, errorMsg);
           break;
         }
       }
@@ -209,8 +250,17 @@ export class VelodromeFetcher {
       
       const allTokenPrices = new Map<string, bigint>();
       
+      // Get the appropriate Sugar Oracle address and connectors for the chain
+      const sugarOracleAddress = SUGAR_ORACLE_ADDRESSES[chainId];
+      if (!sugarOracleAddress) {
+        logger.warn(`[Velodrome] No Sugar Oracle configured for chain ${chainId}`);
+        return priceMap;
+      }
+      
+      const rateConnectors = chainId === 10 ? OPT_RATE_CONNECTORS : BASE_RATE_CONNECTORS;
+      
       for (const batch of tokenBatches) {
-        const connectors = [...batch, ...OPT_RATE_CONNECTORS].map(addr => addr as Address);
+        const connectors = [...batch, ...rateConnectors].map(addr => addr as Address);
         
         try {
           logger.debug(`[Velodrome] Fetching batch of ${batch.length} tokens...`);
@@ -221,7 +271,7 @@ export class VelodromeFetcher {
           );
           
           const oraclePromise = publicClient.readContract({
-            address: VELO_SUGAR_ORACLE_ADDRESS as Address,
+            address: sugarOracleAddress as Address,
             abi: SUGAR_ORACLE_ABI,
             functionName: 'getManyRatesWithConnectors',
             args: [batch.length, connectors],
@@ -259,10 +309,16 @@ export class VelodromeFetcher {
       logger.debug(`[Velodrome] ${validPriceCount} tokens have valid prices from Oracle`)
 
       // Special case for USDC (treat as $1 if no price)
-      const usdcAddress = '0x7f5c764cbc14f9669b88837ca1490cca17c31607';
-      const usdcPrice = tokenPriceMap.get(usdcAddress);
-      if (!usdcPrice || usdcPrice === BigInt(0)) {
-        tokenPriceMap.set(usdcAddress, BigInt(10) ** BigInt(18)); // $1 in 18 decimals
+      const usdcAddresses = {
+        10: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // Optimism
+        8453: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // Base
+      };
+      const usdcAddress = usdcAddresses[chainId];
+      if (usdcAddress) {
+        const usdcPrice = tokenPriceMap.get(usdcAddress);
+        if (!usdcPrice || usdcPrice === BigInt(0)) {
+          tokenPriceMap.set(usdcAddress, BigInt(10) ** BigInt(18)); // $1 in 18 decimals
+        }
       }
 
       // CRITICAL OPTIMIZATION: Use multicall to fetch all decimals at once
