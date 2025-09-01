@@ -18,8 +18,17 @@ export interface CurvePoolData {
   address: string;
   name: string;
   symbol: string;
-  coins: string[];
+  coins: Array<{
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: string;
+    usdPrice: number;
+    poolBalance: string;
+    isBasePoolLpToken: boolean;
+  }>;
   lpTokenAddress?: string;
+  coinsAddresses?: string[];
 }
 
 export interface VeloPoolData {

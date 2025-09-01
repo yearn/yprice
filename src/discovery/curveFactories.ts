@@ -12,7 +12,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'stable-ng': '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',
     'twocrypto-ng': '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F',
     'tricrypto-ng': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-    'eywa': '0xaB33A8a67545b5208B892bd7Db9B005E7d558cD5',
+    // Removed invalid eywa address
   },
   10: { // Optimism
     'stable': '0x2db0E83599a91b508Ac268a6197b8B14F5e72840',
@@ -108,13 +108,23 @@ export class CurveFactoriesDiscovery {
     const publicClient = getPublicClient(this.chainId);
 
     try {
-      // Get pool count
-      const poolCount = await publicClient.readContract({
-        address: factoryAddress as Address,
-        abi: FACTORY_ABI,
-        functionName: 'pool_count',
-      }) as bigint;
-      const count = Number(poolCount);
+      // Get pool count - some factories might not have this function
+      let count = 0;
+      try {
+        const poolCount = await publicClient.readContract({
+          address: factoryAddress as Address,
+          abi: FACTORY_ABI,
+          functionName: 'pool_count',
+        }) as bigint;
+        count = Number(poolCount);
+      } catch (error: any) {
+        // Skip factories that don't implement pool_count
+        if (error.message?.includes('returned no data') || error.message?.includes('reverted')) {
+          logger.debug(`Chain ${this.chainId}: Curve ${factoryType} factory at ${factoryAddress} doesn't support pool_count, skipping`);
+          return tokens;
+        }
+        throw error;
+      }
       
       logger.debug(`Chain ${this.chainId}: Curve ${factoryType} factory has ${count} pools`);
 

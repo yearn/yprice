@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import { parseAbi, type Address } from 'viem';
 import { TokenInfo, CurvePoolData } from './types';
 import { logger, getPublicClient, batchReadContracts } from '../utils';
@@ -47,11 +48,16 @@ export class CurveDiscovery {
     const tokens: TokenInfo[] = [];
     
     try {
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<{ success: boolean; data: { poolData: CurvePoolData[] } }>(
         this.apiUrl!,
         { 
           timeout: 30000,
-          headers: { 'User-Agent': 'yearn-pricing-service' }
+          headers: { 'User-Agent': 'yearn-pricing-service' },
+          httpsAgent: httpsAgent
         }
       );
 
@@ -70,18 +76,23 @@ export class CurveDiscovery {
 
           // Add coin tokens
           for (const coin of pool.coins || []) {
-            if (coin && coin !== '0x0000000000000000000000000000000000000000') {
+            if (coin && typeof coin === 'object' && coin.address && coin.address !== '0x0000000000000000000000000000000000000000') {
               tokens.push({
-                address: coin.toLowerCase(),
+                address: coin.address.toLowerCase(),
                 chainId: this.chainId,
                 source: 'curve-coin',
+                name: coin.name,
+                symbol: coin.symbol,
               });
             }
           }
         }
       }
     } catch (error: any) {
-      logger.warn(`Curve API fetch failed for chain ${this.chainId}:`, error.message);
+      logger.warn(`Curve API fetch failed for chain ${this.chainId}: ${error.message}`);
+      if (error.response) {
+        logger.debug(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+      }
     }
 
     return tokens;
@@ -97,11 +108,20 @@ export class CurveDiscovery {
     const publicClient = getPublicClient(this.chainId);
 
     try {
-      const poolCount = await publicClient.readContract({
-        address: this.factoryAddress as Address,
-        abi: CURVE_FACTORY_ABI,
-        functionName: 'pool_count',
-      }) as bigint;
+      let poolCount: bigint;
+      try {
+        poolCount = await publicClient.readContract({
+          address: this.factoryAddress as Address,
+          abi: CURVE_FACTORY_ABI,
+          functionName: 'pool_count',
+        }) as bigint;
+      } catch (error: any) {
+        if (error.message?.includes('returned no data') || error.message?.includes('reverted')) {
+          logger.debug(`Curve factory at ${this.factoryAddress} doesn't support pool_count, skipping`);
+          return tokens;
+        }
+        throw error;
+      }
       const maxPools = Math.min(Number(poolCount), 500); // Limit to prevent too many calls
 
       logger.debug(`Fetching ${maxPools} Curve pools from chain ${this.chainId}`);

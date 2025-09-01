@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import { type Address } from 'viem';
 import { TokenInfo, VeloPoolData } from './types';
 import { logger, getPublicClient } from '../utils';
@@ -115,11 +116,16 @@ export class VeloDiscovery {
     const tokens: TokenInfo[] = [];
     
     try {
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<{ data: VeloPoolData[] }>(
         this.apiUrl!,
         { 
           timeout: 30000,
-          headers: { 'User-Agent': 'yearn-pricing-service' }
+          headers: { 'User-Agent': 'yearn-pricing-service' },
+          httpsAgent: httpsAgent
         }
       );
 
