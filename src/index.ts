@@ -23,27 +23,17 @@ const limiter = rateLimit({
 
 app.use('/api', limiter);
 
-app.get('/health', (_req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    chains: Object.keys(SUPPORTED_CHAINS).length
-  });
-});
+// Remove duplicate /health endpoint since we have /healthcheck in routes
 
 app.get('/', (_req, res) => {
   res.json({ 
     message: 'Yearn Pricing Service',
     version: '1.0.0',
     endpoints: [
-      'GET /prices/all',
-      'GET /prices/:chainID',
-      'GET /prices/:chainID/all',
-      'GET /prices/:chainID/all/details',
-      'GET /prices/:chainID/:address',
-      'GET /prices/:chainID/some/:addresses',
-      'GET /prices/some/:addresses',
-      'POST /prices/some'
+      'GET /prices - returns all prices',
+      'GET /prices/:chainId - returns all prices for that chain',
+      'GET /prices/:tokens - returns prices for specific tokens (format: chainId:address,chainId:address)',
+      'GET /healthcheck - returns service health status'
     ]
   });
 });
