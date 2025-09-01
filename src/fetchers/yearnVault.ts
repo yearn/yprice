@@ -45,7 +45,7 @@ export class YearnVaultFetcher {
         return priceMap;
       }
 
-      logger.info(`Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId}`);
+      logger.debug(`Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId}`);
 
       // Try V2 method: pricePerShare()
       const v2PriceContracts = yearnVaults.map(vault => ({

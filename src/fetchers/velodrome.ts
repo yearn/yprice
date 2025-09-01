@@ -239,14 +239,14 @@ export class VelodromeFetcher {
       const tokenAddresses = Array.from(uniqueTokens);
       
       // Sugar Oracle expects uint8 for length, so we need to limit to 255 tokens
-      // We'll process in batches if needed
-      const maxTokensPerCall = 200; // Leave some room for connectors
+      // Use smaller batches for faster responses and better reliability
+      const maxTokensPerCall = 50; // Smaller batches = faster responses
       const tokenBatches = [];
       for (let i = 0; i < tokenAddresses.length; i += maxTokensPerCall) {
         tokenBatches.push(tokenAddresses.slice(i, i + maxTokensPerCall));
       }
       
-      logger.debug(`[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches)`);
+      logger.debug(`[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches of up to ${maxTokensPerCall} tokens)`);
       
       const allTokenPrices = new Map<string, bigint>();
       
@@ -259,15 +259,16 @@ export class VelodromeFetcher {
       
       const rateConnectors = chainId === 10 ? OPT_RATE_CONNECTORS : BASE_RATE_CONNECTORS;
       
-      for (const batch of tokenBatches) {
+      // Process batches in parallel for better performance
+      const batchPromises = tokenBatches.map(async (batch, batchIndex) => {
         const connectors = [...batch, ...rateConnectors].map(addr => addr as Address);
         
         try {
-          logger.debug(`[Velodrome] Fetching batch of ${batch.length} tokens...`);
+          logger.debug(`[Velodrome] Starting batch ${batchIndex + 1}/${tokenBatches.length} with ${batch.length} tokens...`);
           
-          // Add timeout for the Oracle call (30s since it's a heavy call)
+          // Extended timeout for Sugar Oracle calls (30s to be safe)
           const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Sugar Oracle timeout after 30s')), 30000)
+            setTimeout(() => reject(new Error(`Sugar Oracle timeout after 30s (batch ${batchIndex + 1})`)), 30000)
           );
           
           const oraclePromise = publicClient.readContract({
@@ -280,18 +281,39 @@ export class VelodromeFetcher {
           const tokenPrices = await Promise.race([oraclePromise, timeoutPromise]) as bigint[];
           
           // Map prices to addresses
+          const batchResults = new Map<string, bigint>();
           for (let i = 0; i < batch.length; i++) {
             const address = batch[i];
             const price = tokenPrices[i];
             if (address && price !== undefined) {
-              allTokenPrices.set(address, price);
+              batchResults.set(address, price);
             }
           }
           
-          logger.debug(`[Velodrome] Batch returned ${tokenPrices.length} prices`);
+          logger.debug(`[Velodrome] Batch ${batchIndex + 1} completed: ${batchResults.size} prices`);
+          return batchResults;
         } catch (error: any) {
-          logger.error(`[Velodrome] Failed to fetch prices from Sugar Oracle: ${error.message || error}`);
-          // Continue with other batches even if one fails
+          logger.warn(`[Velodrome] Batch ${batchIndex + 1} failed: ${error.message || error}`);
+          return new Map<string, bigint>();
+        }
+      });
+      
+      // Process up to 5 batches in parallel
+      const parallelLimit = 5;
+      for (let i = 0; i < batchPromises.length; i += parallelLimit) {
+        const parallelBatch = batchPromises.slice(i, i + parallelLimit);
+        const results = await Promise.all(parallelBatch);
+        
+        // Merge results
+        results.forEach(batchResult => {
+          batchResult.forEach((price, address) => {
+            allTokenPrices.set(address, price);
+          });
+        });
+        
+        // Small delay between parallel groups to avoid overwhelming the RPC
+        if (i + parallelLimit < batchPromises.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       

@@ -30,7 +30,7 @@ export class CurveAmmFetcher {
         return prices;
       }
 
-      logger.info(`Curve AMM: Checking ${potentialLpTokens.length} potential LP tokens on chain ${chainId}`);
+      logger.debug(`Curve AMM: Checking ${potentialLpTokens.length} potential LP tokens on chain ${chainId}`);
 
       // Batch all virtual price calls using multicall
       const virtualPriceContracts = potentialLpTokens.map(token => ({
@@ -63,7 +63,7 @@ export class CurveAmmFetcher {
       });
 
       if (successCount > 0) {
-        logger.info(`Curve AMM: Fetched ${successCount} prices for chain ${chainId}`);
+        logger.debug(`Curve AMM: Fetched ${successCount} prices for chain ${chainId}`);
       }
     } catch (error) {
       logger.error(`Curve AMM fetcher error for chain ${chainId}:`, error);

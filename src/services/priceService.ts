@@ -3,6 +3,7 @@ import { PriceFetcherOrchestrator } from '../fetchers';
 import { ERC20Token, WETH_ADDRESSES } from '../models';
 import { logger } from '../utils';
 import { progressTracker } from '../utils/progressTracker';
+import { betterLogger } from '../utils/betterLogger';
 import tokenDiscoveryService from '../discovery/tokenDiscoveryService';
 import { chunk } from 'lodash';
 
@@ -49,54 +50,90 @@ export class PriceService {
 
   async fetchDiscoveredTokens(forceRefresh: boolean = false): Promise<void> {
     try {
+      const startTime = Date.now();
       const tokensByChain = await tokenDiscoveryService.discoverAllTokens(forceRefresh);
       
       const totalTokens = Array.from(tokensByChain.values()).reduce((sum, tokens) => sum + tokens.length, 0);
-      logger.debug(`Discovery complete: ${tokensByChain.size} chains, ${totalTokens} total tokens`);
+      const totalChains = tokensByChain.size;
       
-      // Process chains
-      const processingKey = 'processing-all';
-      progressTracker.start(processingKey, 'Processing Chains', tokensByChain.size);
+      logger.info('');
+      logger.info('📈 Starting price fetching...');
+      logger.info(`Processing ${totalTokens} tokens across ${totalChains} chains`);
+      logger.info('');
       
-      const chainPromises = Array.from(tokensByChain.entries()).map(async ([chainId, tokens]) => {
-        if (tokens.length === 0) {
-          progressTracker.increment(processingKey);
-          return;
-        }
-        
-        const batchSize = 500;
-        const batches = chunk(tokens, batchSize);
-        
-        const chainKey = `chain-${chainId}`;
-        progressTracker.start(chainKey, 'Fetching Prices', tokens.length, chainId);
-        
-        const batchGroups = chunk(batches, 3);
-        for (const batchGroup of batchGroups) {
-          await Promise.all(
-            batchGroup.map(batch => this.fetchAndStorePrices(chainId, batch))
-          );
-          
-          const processed = Math.min(
-            batchGroups.indexOf(batchGroup) * 3 * batchSize + batchGroup.length * batchSize,
-            tokens.length
-          );
-          progressTracker.update(chainKey, processed);
-          
-          if (batchGroups.indexOf(batchGroup) < batchGroups.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+      // Enable batch mode to suppress verbose logs
+      betterLogger.setBatchMode(true);
+      
+      // Track overall stats
+      let totalPricesFound = 0;
+      let totalErrors = 0;
+      
+      // Process chains with cleaner logging
+      const chainResults = await Promise.all(
+        Array.from(tokensByChain.entries()).map(async ([chainId, tokens]) => {
+          if (tokens.length === 0) {
+            return { chainId, tokens: 0, prices: 0, errors: 0 };
           }
-        }
-        
-        progressTracker.complete(chainKey);
-        progressTracker.increment(processingKey);
+          
+          const chainStartTime = Date.now();
+          betterLogger.chainInfo(chainId, `Processing ${tokens.length} tokens...`);
+          
+          const batchSize = 500;
+          const batches = chunk(tokens, batchSize);
+          let errors = 0;
+          
+          // Process in smaller concurrent groups
+          const batchGroups = chunk(batches, 3);
+          for (const batchGroup of batchGroups) {
+            await Promise.all(
+              batchGroup.map(async batch => {
+                try {
+                  await this.fetchAndStorePrices(chainId, batch);
+                } catch (error) {
+                  errors++;
+                  betterLogger.verbose(`Error in batch for chain ${chainId}: ${error}`);
+                }
+              })
+            );
+            
+            // Small delay between batch groups
+            if (batchGroups.indexOf(batchGroup) < batchGroups.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+          }
+          
+          // Get final price count after all batches complete
+          const storage = getPriceStorage();
+          const chainPrices = storage.getPricesByChain(chainId);
+          const pricesFound = chainPrices.length;
+          
+          const chainDuration = Date.now() - chainStartTime;
+          betterLogger.chainComplete(chainId, tokens.length, pricesFound, chainDuration);
+          
+          return { chainId, tokens: tokens.length, prices: pricesFound, errors };
+        })
+      );
+      
+      // Disable batch mode
+      betterLogger.setBatchMode(false);
+      
+      // Calculate totals
+      chainResults.forEach(result => {
+        totalPricesFound += result.prices;
+        totalErrors += result.errors;
       });
       
-      await Promise.all(chainPromises);
-      progressTracker.complete(processingKey);
+      // Show summary
+      betterLogger.summary({
+        totalChains,
+        totalTokens,
+        totalPrices: totalPricesFound,
+        duration: Date.now() - startTime,
+        errors: totalErrors
+      });
       
-      const stats = progressTracker.getStats();
-      logger.info(`✅ Price fetch complete: ${totalTokens} tokens processed${stats.errors > 0 ? ` (${stats.errors} errors)` : ''}`);
     } catch (error) {
+      betterLogger.setBatchMode(false);
       logger.error('Error fetching discovered tokens:', error);
     }
   }

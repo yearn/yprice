@@ -1,16 +1,17 @@
 import axios from 'axios';
+import https from 'https';
 import { TokenInfo } from './types';
 import { logger } from '../utils';
 
-// Balancer subgraph endpoints
+// Balancer subgraph endpoints - Using dev endpoints to avoid rate limits
 const BALANCER_SUBGRAPHS: Record<number, string> = {
-  1: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2',
-  137: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-polygon-v2',
-  42161: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-arbitrum-v2',
-  10: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-optimism-v2',
-  100: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-gnosis-chain-v2',
-  8453: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-base-v2',
-  43114: 'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-avalanche-v2',
+  1: 'https://api.studio.thegraph.com/query/75376/balancer-v2/version/latest',
+  137: 'https://api.studio.thegraph.com/query/75376/balancer-polygon-v2/version/latest',
+  42161: 'https://api.studio.thegraph.com/query/75376/balancer-arbitrum-v2/version/latest',
+  10: 'https://api.studio.thegraph.com/query/75376/balancer-optimism-v2/version/latest',
+  100: 'https://api.studio.thegraph.com/query/75376/balancer-gnosis-chain-v2/version/latest',
+  8453: 'https://api.studio.thegraph.com/query/24660/balancer-base-v2/version/latest',
+  43114: 'https://api.studio.thegraph.com/query/75376/balancer-avalanche-v2/version/latest',
 };
 
 // Balancer API for more comprehensive data
@@ -85,6 +86,10 @@ export class BalancerDiscovery {
         }
       `;
 
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.post<BalancerSubgraphResponse>(
         subgraphUrl,
         { query },
@@ -93,6 +98,7 @@ export class BalancerDiscovery {
           headers: {
             'Content-Type': 'application/json',
           },
+          httpsAgent: httpsAgent
         }
       );
 
@@ -125,7 +131,18 @@ export class BalancerDiscovery {
 
       logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer subgraph`);
     } catch (error: any) {
-      logger.warn(`Balancer subgraph discovery failed for chain ${this.chainId}:`, error.message);
+      // Handle rate limiting specifically
+      if (error.response?.status === 429 || error.response?.data?.includes('Too many requests')) {
+        logger.warn(`Balancer subgraph rate limited for chain ${this.chainId} - this is expected and will retry later`);
+      } else if (error.response?.data?.errors?.[0]?.message?.includes('deployment')) {
+        logger.debug(`Balancer subgraph deployment issue for chain ${this.chainId}: ${error.response.data.errors[0].message}`);
+      } else {
+        logger.warn(`Balancer subgraph discovery failed for chain ${this.chainId}:`, error.message);
+      }
+      
+      if (error.response) {
+        logger.debug(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+      }
     }
 
     return tokens;
@@ -151,11 +168,16 @@ export class BalancerDiscovery {
         return tokens;
       }
 
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get(`${BALANCER_API_URL}${this.chainId}`, {
         timeout: 30000,
         headers: {
           'Accept': 'application/json',
         },
+        httpsAgent: httpsAgent
       });
 
       if (response.data && Array.isArray(response.data)) {

@@ -186,8 +186,8 @@ export class VeloDiscovery {
     try {
       // Chain-specific configuration
       const config = {
-        10: { batchSize: 25, maxBatches: 39, timeout: 15000 }, // Optimism
-        8453: { batchSize: 10, maxBatches: 20, timeout: 30000 }, // Base (smaller batches, longer timeout)
+        10: { batchSize: 25, maxBatches: 40, timeout: 30000 }, // Optimism
+        8453: { batchSize: 10, maxBatches: 30, timeout: 60000 }, // Base
       };
       
       const chainConfig = config[this.chainId] || { batchSize: 25, maxBatches: 30, timeout: 20000 };

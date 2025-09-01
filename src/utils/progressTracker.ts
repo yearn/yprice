@@ -59,10 +59,13 @@ export class ProgressTracker extends EventEmitter {
     if (state) {
       const elapsed = ((Date.now() - state.startTime) / 1000).toFixed(1);
       const chainInfo = state.chainId ? ` [Chain ${state.chainId}]` : '';
-      logger.info(
-        `✓ ${state.phase}${chainInfo}: ${state.current}/${state.total} completed in ${elapsed}s` +
-        (state.errors > 0 ? ` (${state.errors} errors)` : '')
-      );
+      // Only log completion for important phases, not individual price fetches
+      if (!state.phase.includes('Price Fetching') || process.env.VERBOSE_PROGRESS === 'true') {
+        logger.info(
+          `✓ ${state.phase}${chainInfo}: ${state.current}/${state.total} completed in ${elapsed}s` +
+          (state.errors > 0 ? ` (${state.errors} errors)` : '')
+        );
+      }
       this.states.delete(key);
     }
     
@@ -80,6 +83,11 @@ export class ProgressTracker extends EventEmitter {
   }
 
   private display(): void {
+    // Skip display if verbose logs are disabled
+    if (process.env.DISABLE_VERBOSE_LOGS === 'true') {
+      return;
+    }
+    
     const lines: string[] = [];
     
     // Group by phase
@@ -110,12 +118,16 @@ export class ProgressTracker extends EventEmitter {
         const bar = this.createProgressBar(percent);
         lines.push(`${phase}: ${bar} ${totalCurrent}/${totalTotal} (${percent}%)`);
         
-        // Show per-chain breakdown
-        states.forEach(state => {
-          const chainPercent = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
-          const chainBar = this.createMiniProgressBar(chainPercent);
-          lines.push(`  Chain ${state.chainId}: ${chainBar} ${state.current}/${state.total}`);
-        });
+        // Show per-chain breakdown - but only if there are <= 5 chains
+        if (states.length <= 5) {
+          states.forEach(state => {
+            const chainPercent = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
+            const chainBar = this.createMiniProgressBar(chainPercent);
+            lines.push(`  Chain ${state.chainId}: ${chainBar} ${state.current}/${state.total}`);
+          });
+        } else {
+          lines.push(`  Processing ${states.length} chains...`);
+        }
       }
     });
 
@@ -136,6 +148,11 @@ export class ProgressTracker extends EventEmitter {
   }
 
   private startDisplayInterval(): void {
+    // Don't start interval if verbose logs are disabled
+    if (process.env.DISABLE_VERBOSE_LOGS === 'true') {
+      return;
+    }
+    
     if (!this.displayInterval) {
       this.displayInterval = setInterval(() => {
         if (this.states.size > 0) {

@@ -38,7 +38,7 @@ export class ERC4626Fetcher {
         return priceMap;
       }
 
-      logger.info(`ERC4626: Checking ${potentialVaults.length} potential vaults on chain ${chainId}`);
+      logger.debug(`ERC4626: Checking ${potentialVaults.length} potential vaults on chain ${chainId}`);
 
       // Step 1: Batch read asset addresses for all vaults
       const assetContracts = potentialVaults.map(vault => ({
@@ -104,7 +104,7 @@ export class ERC4626Fetcher {
       });
 
       if (successCount > 0) {
-        logger.info(`ERC4626: Calculated ${successCount} vault prices on chain ${chainId}`);
+        logger.debug(`ERC4626: Calculated ${successCount} vault prices on chain ${chainId}`);
       }
     } catch (error) {
       logger.error(`ERC4626 fetcher failed for chain ${chainId}:`, error);

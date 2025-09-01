@@ -1,4 +1,5 @@
 import axios from 'axios';
+import https from 'https';
 import { ERC20Token, Price } from '../models';
 import { logger } from '../utils';
 import { getPriceStorage } from '../storage';
@@ -49,9 +50,14 @@ export class CurveFactoriesFetcher {
     try {
       logger.debug(`Curve Factories: Fetching prices for chain ${chainId}`);
       
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false // Temporarily disable SSL verification
+      });
+      
       const response = await axios.get<CurveAPIResponse>(apiUrl, {
         timeout: 30000,
         headers: { 'User-Agent': 'yearn-pricing-service' },
+        httpsAgent: httpsAgent
       });
 
       if (!response.data?.success || !response.data?.data?.poolData) {

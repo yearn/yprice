@@ -11,40 +11,46 @@ interface TokenListToken {
 }
 
 
-// Token list URLs by chain
+// Token list URLs by chain - Updated with working endpoints
 const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   // Ethereum
   1: [
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/1' },
-    { name: 'Uniswap', url: 'https://gateway.ipfs.io/ipns/tokens.uniswap.org' },
+    { name: 'Uniswap', url: 'https://tokens.coingecko.com/uniswap/all.json' },
+    { name: 'CoinGecko Ethereum', url: 'https://tokens.coingecko.com/ethereum/all.json' },
   ],
   // Optimism
   10: [
-    { name: 'Optimism Official', url: 'https://static.optimism.io/optimism.tokenlist.json' },
+    { name: 'Optimism Official', url: 'https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/master/optimism.tokenlist.json' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/10' },
+    { name: 'CoinGecko Optimism', url: 'https://tokens.coingecko.com/optimistic-ethereum/all.json' },
   ],
   // Gnosis
   100: [
-    { name: 'Honeyswap', url: 'https://tokens.honeyswap.org' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/100' },
+    { name: 'CoinGecko Gnosis', url: 'https://tokens.coingecko.com/xdai/all.json' },
   ],
   // Polygon
   137: [
     { name: 'Polygon Official', url: 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/137' },
+    { name: 'CoinGecko Polygon', url: 'https://tokens.coingecko.com/polygon-pos/all.json' },
   ],
   // Fantom
   250: [
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/250' },
+    { name: 'CoinGecko Fantom', url: 'https://tokens.coingecko.com/fantom/all.json' },
   ],
   // Base
   8453: [
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/8453' },
+    { name: 'CoinGecko Base', url: 'https://tokens.coingecko.com/base/all.json' },
   ],
   // Arbitrum
   42161: [
     { name: 'Arbitrum Bridge', url: 'https://bridge.arbitrum.io/token-list-42161.json' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/42161' },
+    { name: 'CoinGecko Arbitrum', url: 'https://tokens.coingecko.com/arbitrum-one/all.json' },
   ],
 };
 
