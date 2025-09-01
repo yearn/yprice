@@ -125,20 +125,14 @@ export class ProgressTracker extends EventEmitter {
     }
   }
 
-  private createProgressBar(percent: number): string {
-    const width = 20;
+  private createProgressBar(percent: number, width = 20, chars = ['█', '░']): string {
     const safePercent = Math.max(0, Math.min(100, percent));
     const filled = Math.round((safePercent / 100) * width);
-    const empty = Math.max(0, width - filled);
-    return '[' + '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, empty)) + ']';
+    return '[' + (chars[0] || '').repeat(filled) + (chars[1] || '').repeat(width - filled) + ']';
   }
 
   private createMiniProgressBar(percent: number): string {
-    const width = 10;
-    const safePercent = Math.max(0, Math.min(100, percent));
-    const filled = Math.round((safePercent / 100) * width);
-    const empty = Math.max(0, width - filled);
-    return '[' + '▪'.repeat(Math.max(0, filled)) + '·'.repeat(Math.max(0, empty)) + ']';
+    return this.createProgressBar(percent, 10, ['▪', '·']);
   }
 
   private startDisplayInterval(): void {
@@ -159,35 +153,31 @@ export class ProgressTracker extends EventEmitter {
   }
 
   getStats(): { active: number; total: number; errors: number } {
-    let total = 0;
-    let errors = 0;
-    
-    this.states.forEach(state => {
-      total += state.total;
-      errors += state.errors;
-    });
-    
-    return { active: this.states.size, total, errors };
+    const totals = Array.from(this.states.values()).reduce(
+      (acc, state) => ({ total: acc.total + state.total, errors: acc.errors + state.errors }),
+      { total: 0, errors: 0 }
+    );
+    return { active: this.states.size, ...totals };
   }
 }
 
 export const progressTracker = new ProgressTracker();
 
 // Helper functions for common operations
-export function trackDiscovery(chainId: number, total: number): string {
+export const trackDiscovery = (chainId: number, total: number) => {
   const key = `discovery-${chainId}`;
   progressTracker.start(key, 'Token Discovery', total, chainId);
   return key;
-}
+};
 
-export function trackPriceFetch(chainId: number, source: string, total: number): string {
+export const trackPriceFetch = (chainId: number, source: string, total: number) => {
   const key = `price-${source}-${chainId}`;
   progressTracker.start(key, `Fetching ${source}`, total, chainId);
   return key;
-}
+};
 
-export function trackBatch(phase: string, total: number): string {
+export const trackBatch = (phase: string, total: number) => {
   const key = `batch-${phase}-${Date.now()}`;
   progressTracker.start(key, phase, total);
   return key;
-}
+};

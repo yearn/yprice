@@ -1,18 +1,17 @@
 import { Router, Request, Response } from 'express';
 import { getPriceStorage } from '../storage';
 import { SUPPORTED_CHAINS, PriceMapResponse, ChainPricesResponse } from '../models';
-import { stringToBool, safeString, humanizePrice, toChecksumAddress } from '../utils';
+import { stringToBool, humanizePrice, toChecksumAddress } from '../utils';
 import logger from '../utils/logger';
 import priceService from '../services/priceService';
 
 const router = Router();
 
-function formatPriceResponse(price: any, humanized: boolean, detailed: boolean = false): any {
-  if (humanized && price.humanizedPrice === undefined) {
+const formatPriceResponse = (price: any, humanized: boolean, detailed = false): any => {
+  if (humanized && !price.humanizedPrice) {
     price.humanizedPrice = humanizePrice(BigInt(price.price));
   }
   
-  // For detailed responses, return full object
   if (detailed) {
     return {
       address: toChecksumAddress(price.address),
@@ -22,23 +21,20 @@ function formatPriceResponse(price: any, humanized: boolean, detailed: boolean =
     };
   }
   
-  // For simple responses (matching ydaemon), return just the price string
   return humanized ? price.humanizedPrice : price.price.toString();
-}
+};
 
 router.get('/prices/all', (req: Request, res: Response): Response | void => {
   try {
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const detailed = stringToBool(safeString(req.query.detailed as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    const allPrices = storage.getAllPrices();
+    const humanized = stringToBool(req.query.humanized as string);
+    const detailed = stringToBool(req.query.detailed as string);
+    const allPrices = getPriceStorage().getAllPrices();
     
     const response: any = {};
     
     allPrices.forEach((chainPrices, chainId) => {
-      // Collect all addresses and their prices
-      const addresses: string[] = [];
       const priceMap = new Map<string, any>();
+      const addresses: string[] = [];
       
       chainPrices.forEach((price, address) => {
         const lowerAddress = address.toLowerCase();
@@ -46,166 +42,150 @@ router.get('/prices/all', (req: Request, res: Response): Response | void => {
         priceMap.set(lowerAddress, formatPriceResponse(price, humanized, detailed));
       });
       
-      // Sort addresses in ascending order (0x000... first, then 0x001..., etc.)
-      addresses.sort();
-      
-      // Build sorted response object using Object.fromEntries to preserve order
-      const sortedEntries = addresses.map(addr => [addr, priceMap.get(addr)]);
-      response[chainId.toString()] = Object.fromEntries(sortedEntries);
+      response[chainId.toString()] = Object.fromEntries(
+        addresses.sort().map(addr => [addr, priceMap.get(addr)])
+      );
     });
     
     res.json(response);
   } catch (error) {
-    logger.error('Error fetching all prices:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching all prices:', error);
   }
 });
+
+const validateChainId = (chainId: number) => 
+  chainId && Object.values(SUPPORTED_CHAINS).some(c => c.id === chainId);
+
+const handleError = (res: Response, message: string, error?: any) => {
+  if (error) logger.error(message, error);
+  res.status(500).json({ error: 'Internal server error' });
+};
 
 router.get('/prices/:chainID', (req: Request, res: Response): Response | void => {
   try {
     const chainId = parseInt(req.params.chainID!);
-    if (!chainId || !Object.values(SUPPORTED_CHAINS).find(c => c.id === chainId)) {
+    if (!validateChainId(chainId)) {
       return res.status(400).json({ error: 'Invalid chain ID' });
     }
     
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    const { asMap } = storage.listPrices(chainId);
+    const humanized = stringToBool(req.query.humanized as string);
+    const { asMap } = getPriceStorage().listPrices(chainId);
     
     const response: PriceMapResponse = {};
-    
     asMap.forEach((price, address) => {
       response[address] = formatPriceResponse(price, humanized);
     });
     
     res.json(response);
   } catch (error) {
-    logger.error('Error fetching chain prices:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching chain prices:', error);
   }
 });
 
 router.get('/prices/:chainID/all', (req: Request, res: Response): Response | void => {
   try {
     const chainId = parseInt(req.params.chainID!);
-    if (!chainId || !Object.values(SUPPORTED_CHAINS).find(c => c.id === chainId)) {
+    if (!validateChainId(chainId)) {
       return res.status(400).json({ error: 'Invalid chain ID' });
     }
     
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    const { asSlice } = storage.listPrices(chainId);
+    const humanized = stringToBool(req.query.humanized as string);
+    const { asSlice } = getPriceStorage().listPrices(chainId);
     
-    const response = asSlice.map(price => formatPriceResponse(price, humanized));
-    
-    res.json(response);
+    res.json(asSlice.map(price => formatPriceResponse(price, humanized)));
   } catch (error) {
-    logger.error('Error fetching chain prices details:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching chain prices details:', error);
   }
 });
 
 router.get('/prices/:chainID/all/details', (req: Request, res: Response): Response | void => {
   try {
     const chainId = parseInt(req.params.chainID!);
-    if (!chainId || !Object.values(SUPPORTED_CHAINS).find(c => c.id === chainId)) {
+    if (!validateChainId(chainId)) {
       return res.status(400).json({ error: 'Invalid chain ID' });
     }
     
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    const { asSlice } = storage.listPrices(chainId);
+    const humanized = stringToBool(req.query.humanized as string);
+    const { asSlice } = getPriceStorage().listPrices(chainId);
     
-    const response = asSlice.map(price => ({
+    res.json(asSlice.map(price => ({
       ...formatPriceResponse(price, humanized),
       chainId,
       timestamp: Date.now()
-    }));
-    
-    res.json(response);
+    })));
   } catch (error) {
-    logger.error('Error fetching chain prices details:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching chain prices details:', error);
   }
 });
 
 router.get('/prices/:chainID/:address', (req: Request, res: Response): Response | void => {
   try {
     const chainId = parseInt(req.params.chainID!);
-    if (!chainId || !Object.values(SUPPORTED_CHAINS).find(c => c.id === chainId)) {
+    if (!validateChainId(chainId)) {
       return res.status(400).json({ error: 'Invalid chain ID' });
     }
     
-    const address = req.params.address!;
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    const price = storage.getPrice(chainId, address);
-    
+    const price = getPriceStorage().getPrice(chainId, req.params.address!);
     if (!price) {
       return res.status(404).json({ error: 'Price not found' });
     }
     
-    res.json(formatPriceResponse(price, humanized));
+    res.json(formatPriceResponse(price, stringToBool(req.query.humanized as string)));
   } catch (error) {
-    logger.error('Error fetching single price:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching single price:', error);
   }
 });
 
 router.get('/prices/:chainID/some/:addresses', (req: Request, res: Response): Response | void => {
   try {
     const chainId = parseInt(req.params.chainID!);
-    if (!chainId || !Object.values(SUPPORTED_CHAINS).find(c => c.id === chainId)) {
+    if (!validateChainId(chainId)) {
       return res.status(400).json({ error: 'Invalid chain ID' });
     }
     
-    const addresses = req.params.addresses!.split(',');
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
+    const humanized = stringToBool(req.query.humanized as string);
     const storage = getPriceStorage();
-    
     const response: PriceMapResponse = {};
     
-    addresses.forEach(address => {
+    req.params.addresses!.split(',').forEach(address => {
       const price = storage.getPrice(chainId, address);
-      if (price) {
-        response[address] = formatPriceResponse(price, humanized);
-      }
+      if (price) response[address] = formatPriceResponse(price, humanized);
     });
     
     res.json(response);
   } catch (error) {
-    logger.error('Error fetching some prices:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching some prices:', error);
   }
 });
+
+const buildCrossChainResponse = (addresses: string[], humanized: boolean, chains = Object.values(SUPPORTED_CHAINS)) => {
+  const storage = getPriceStorage();
+  const response: ChainPricesResponse = {};
+  
+  chains.forEach(chain => {
+    const chainResponse: PriceMapResponse = {};
+    
+    addresses.forEach(address => {
+      const price = storage.getPrice(chain.id, address);
+      if (price) chainResponse[address] = formatPriceResponse(price, humanized);
+    });
+    
+    if (Object.keys(chainResponse).length > 0) {
+      response[chain.id.toString()] = chainResponse;
+    }
+  });
+  
+  return response;
+};
 
 router.get('/prices/some/:addresses', (req: Request, res: Response): Response | void => {
   try {
     const addresses = req.params.addresses!.split(',');
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
+    const humanized = stringToBool(req.query.humanized as string);
     
-    const response: ChainPricesResponse = {};
-    
-    Object.values(SUPPORTED_CHAINS).forEach(chain => {
-      const chainResponse: PriceMapResponse = {};
-      
-      addresses.forEach(address => {
-        const price = storage.getPrice(chain.id, address);
-        if (price) {
-          chainResponse[address] = formatPriceResponse(price, humanized);
-        }
-      });
-      
-      if (Object.keys(chainResponse).length > 0) {
-        response[chain.id.toString()] = chainResponse;
-      }
-    });
-    
-    res.json(response);
+    res.json(buildCrossChainResponse(addresses, humanized));
   } catch (error) {
-    logger.error('Error fetching cross-chain prices:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching cross-chain prices:', error);
   }
 });
 
@@ -217,33 +197,14 @@ router.post('/prices/some', (req: Request, res: Response): Response | void => {
       return res.status(400).json({ error: 'addresses must be an array' });
     }
     
-    const humanized = stringToBool(safeString(req.query.humanized as string | undefined, 'false'));
-    const storage = getPriceStorage();
-    
-    const response: ChainPricesResponse = {};
+    const humanized = stringToBool(req.query.humanized as string);
     const chains = chainIds && Array.isArray(chainIds) 
-      ? chainIds.map(id => ({ id }))
+      ? Object.values(SUPPORTED_CHAINS).filter(c => chainIds.includes(c.id))
       : Object.values(SUPPORTED_CHAINS);
     
-    chains.forEach((chain: any) => {
-      const chainResponse: PriceMapResponse = {};
-      
-      addresses.forEach((address: string) => {
-        const price = storage.getPrice(chain.id, address);
-        if (price) {
-          chainResponse[address] = formatPriceResponse(price, humanized);
-        }
-      });
-      
-      if (Object.keys(chainResponse).length > 0) {
-        response[chain.id.toString()] = chainResponse;
-      }
-    });
-    
-    res.json(response);
+    res.json(buildCrossChainResponse(addresses, humanized, chains));
   } catch (error) {
-    logger.error('Error fetching batch prices:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    handleError(res, 'Error fetching batch prices:', error);
   }
 });
 

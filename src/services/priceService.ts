@@ -1,6 +1,6 @@
 import { getPriceStorage } from '../storage';
 import { PriceFetcherOrchestrator } from '../fetchers';
-import { ERC20Token } from '../models';
+import { ERC20Token, WETH_ADDRESSES } from '../models';
 import { logger } from '../utils';
 import { progressTracker } from '../utils/progressTracker';
 import tokenDiscoveryService from '../discovery/tokenDiscoveryService';
@@ -13,39 +13,23 @@ export class PriceService {
   async fetchAndStorePrices(chainId: number, tokens: ERC20Token[]): Promise<void> {
     try {
       const tokensWithNative = [...tokens];
-      if (chainId === 1 || chainId === 10 || chainId === 42161 || chainId === 8453) {
-        const wethAddresses = {
-          1: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-          10: '0x4200000000000000000000000000000000000006',
-          42161: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
-          8453: '0x4200000000000000000000000000000000000006',
-        };
-        
-        const wethAddress = wethAddresses[chainId as keyof typeof wethAddresses];
-        if (wethAddress && !tokensWithNative.some(t => t.address.toLowerCase() === wethAddress)) {
-          tokensWithNative.push({
-            address: wethAddress,
-            name: 'Wrapped Ether',
-            symbol: 'WETH',
-            decimals: 18,
-            chainId,
-          });
-        }
+      const wethAddress = WETH_ADDRESSES[chainId];
+      
+      if (wethAddress && !tokensWithNative.some(t => t.address.toLowerCase() === wethAddress)) {
+        tokensWithNative.push({
+          address: wethAddress,
+          name: 'Wrapped Ether',
+          symbol: 'WETH',
+          decimals: 18,
+          chainId,
+        });
       }
       
       const prices = await this.fetcher.fetchPrices(chainId, tokensWithNative);
       const storage = getPriceStorage();
       
-      if (chainId === 1 || chainId === 10 || chainId === 42161 || chainId === 8453) {
-        const wethAddresses = {
-          1: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-          10: '0x4200000000000000000000000000000000000006',
-          42161: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
-          8453: '0x4200000000000000000000000000000000000006',
-        };
-        
-        const wethAddress = wethAddresses[chainId as keyof typeof wethAddresses];
-        const wethPrice = prices.get(wethAddress!);
+      if (wethAddress) {
+        const wethPrice = prices.get(wethAddress);
         if (wethPrice) {
           prices.set('0x0000000000000000000000000000000000000000', {
             ...wethPrice,

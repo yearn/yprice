@@ -15,6 +15,13 @@ export const SUPPORTED_CHAINS: Record<string, ChainConfig> = {
   KATANA: { id: 747474, name: 'katana' },
 };
 
+export const WETH_ADDRESSES: Record<number, string> = {
+  1: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+  10: '0x4200000000000000000000000000000000000006',
+  42161: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
+  8453: '0x4200000000000000000000000000000000000006',
+};
+
 export interface Price {
   address: string;
   price: bigint;
