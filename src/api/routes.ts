@@ -1,14 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { getPriceStorage } from '../storage';
+import { getStorage, StorageWrapper } from '../storage';
 import { SUPPORTED_CHAINS } from '../models';
 import logger from '../utils/logger';
 
 const router = Router();
 
 // GET /prices - returns all prices (original dict format)
-router.get('/prices', (_req: Request, res: Response): void => {
+router.get('/prices', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const allPrices = getPriceStorage().getAllPrices();
+    const storage = new StorageWrapper(getStorage());
+    const allPrices = await storage.getAllPrices();
     const response: any = {};
     
     allPrices.forEach((chainPrices, chainId) => {
@@ -29,7 +30,7 @@ router.get('/prices', (_req: Request, res: Response): void => {
 });
 
 // GET /prices/[chainId] - returns all prices for that chain
-router.get('/prices/:chainId', (req: Request, res: Response): void => {
+router.get('/prices/:chainId', async (req: Request, res: Response): Promise<void> => {
   try {
     const chainId = parseInt(req.params.chainId);
     
@@ -39,7 +40,8 @@ router.get('/prices/:chainId', (req: Request, res: Response): void => {
       return;
     }
     
-    const { asMap } = getPriceStorage().listPrices(chainId);
+    const storage = new StorageWrapper(getStorage());
+    const { asMap } = await storage.listPrices(chainId);
     const response: any = {};
     
     asMap.forEach((price, address) => {
@@ -54,7 +56,7 @@ router.get('/prices/:chainId', (req: Request, res: Response): void => {
 });
 
 // GET /prices/[chainId:address,chainId:address,...] - returns prices for specified tokens
-router.get('/prices/:tokens', (req: Request, res: Response): void => {
+router.get('/prices/:tokens', async (req: Request, res: Response): Promise<void> => {
   try {
     const tokens = req.params.tokens;
     
@@ -64,24 +66,24 @@ router.get('/prices/:tokens', (req: Request, res: Response): void => {
       return;
     }
     
-    const storage = getPriceStorage();
+    const storage = new StorageWrapper(getStorage());
     const response: any = {};
     
     // Parse token list: "1:0xabc,10:0xdef,137:0x123"
     const tokenList = tokens.split(',');
     
-    tokenList.forEach(token => {
+    for (const token of tokenList) {
       const [chainIdStr, address] = token.split(':');
       const chainId = parseInt(chainIdStr);
       
       if (chainId && address) {
-        const price = storage.getPrice(chainId, address);
+        const price = await storage.getPrice(chainId, address);
         if (price) {
           // Use the full chainId:address as the key
           response[`${chainId}:${address.toLowerCase()}`] = price.price.toString();
         }
       }
-    });
+    }
     
     res.json(response);
   } catch (error) {

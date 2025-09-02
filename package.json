@@ -23,7 +23,7 @@
   "author": "Yearn Finance",
   "license": "MIT",
   "dependencies": {
-    "@types/lodash": "^4.17.20",
+    "@upstash/redis": "^1.35.3",
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -35,6 +35,7 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.20",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.5",

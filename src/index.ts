@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import * as fs from 'fs';
 import * as path from 'path';
-import { initializePriceStorage } from './storage';
+import { initializeStorage, StorageType } from './storage';
 import priceRoutes from './api/routes';
 import { logger } from './utils';
 import { SUPPORTED_CHAINS } from './models';
@@ -53,9 +53,12 @@ async function startServer() {
   try {
     // Use 0 for no expiration (like ydaemon) - prices never expire, just get updated
     const cacheTTL = parseInt(process.env.CACHE_TTL_SECONDS || '0');
-    initializePriceStorage(cacheTTL);
+    const storageType = (process.env.STORAGE_TYPE || 'file') as StorageType;
+    const backupDir = './data/prices';
     
-    logger.info('Price storage initialized');
+    initializeStorage(storageType, cacheTTL, backupDir);
+    
+    logger.info(`Price storage initialized with ${storageType} backend`);
     logger.info(`Cache TTL: ${cacheTTL} seconds`);
     
     // Running in static mode - serving cached data from disk

@@ -1,4 +1,4 @@
-import { getPriceStorage } from '../storage';
+import { getStorage, StorageWrapper } from '../storage';
 import { PriceFetcherOrchestrator } from '../fetchers';
 import { ERC20Token, WETH_ADDRESSES } from '../models';
 import { logger } from '../utils';
@@ -27,7 +27,7 @@ export class PriceService {
       }
       
       const prices = await this.fetcher.fetchPrices(chainId, tokensWithNative);
-      const storage = getPriceStorage();
+      const storage = new StorageWrapper(getStorage());
       
       if (wethAddress) {
         const wethPrice = prices.get(wethAddress);
@@ -41,7 +41,7 @@ export class PriceService {
       
       const pricesArray = Array.from(prices.values());
       if (pricesArray.length > 0) {
-        storage.storePrices(chainId, pricesArray);
+        await storage.storePrices(chainId, pricesArray);
       }
     } catch (error) {
       logger.error(`Error fetching prices for chain ${chainId}:`, error);
@@ -103,8 +103,8 @@ export class PriceService {
           }
           
           // Get final price count after all batches complete
-          const storage = getPriceStorage();
-          const { asSlice } = storage.listPrices(chainId);
+          const storage = new StorageWrapper(getStorage());
+          const { asSlice } = await storage.listPrices(chainId);
           const pricesFound = asSlice.length;
           
           const chainDuration = Date.now() - chainStartTime;
