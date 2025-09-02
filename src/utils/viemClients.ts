@@ -8,6 +8,40 @@ import {
   base, 
   arbitrum 
 } from 'viem/chains';
+import { defineChain } from 'viem';
+
+// Define custom chains
+const sonic = defineChain({
+  id: 146,
+  name: 'Sonic',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Sonic',
+    symbol: 'S',
+  },
+  rpcUrls: {
+    default: { http: ['https://rpc.sonic.game'] },
+  },
+  blockExplorers: {
+    default: { name: 'Sonic Explorer', url: 'https://sonicscan.org' },
+  },
+});
+
+const katana = defineChain({
+  id: 747474,
+  name: 'Katana',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Katana',
+    symbol: 'KTN',
+  },
+  rpcUrls: {
+    default: { http: ['https://rpc.katana.network'] },
+  },
+  blockExplorers: {
+    default: { name: 'Katana Explorer', url: 'https://katana.network' },
+  },
+});
 
 // Chain mappings
 const chains: Record<number, Chain> = {
@@ -15,9 +49,11 @@ const chains: Record<number, Chain> = {
   10: optimism,
   100: gnosis,
   137: polygon,
+  146: sonic,
   250: fantom,
-  8453: base,
   42161: arbitrum,
+  747474: katana,
+  8453: base,
 };
 
 // Client cache
@@ -45,7 +81,7 @@ export function getPublicClient(chainId: number): PublicClient {
       transport: http(rpcUrl),
       batch: {
         multicall: {
-          batchSize: 1024 * 1024, // 1MB batches (increased from 100KB)
+          batchSize: 1024 * 1024, // 1MB batches
           wait: 0, // Send immediately
         },
       },

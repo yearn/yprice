@@ -190,7 +190,7 @@ export class VeloDiscovery {
         8453: { batchSize: 10, maxBatches: 30, timeout: 60000 }, // Base
       };
       
-      const chainConfig = config[this.chainId] || { batchSize: 25, maxBatches: 30, timeout: 20000 };
+      const chainConfig = config[this.chainId as keyof typeof config] || { batchSize: 25, maxBatches: 30, timeout: 20000 };
       const { batchSize, maxBatches, timeout } = chainConfig;
       
       logger.debug(`Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId} (batch size: ${batchSize}, max batches: ${maxBatches})`);

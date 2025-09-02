@@ -31,7 +31,6 @@ export class YearnVaultFetcher {
 
       // Filter for Yearn vaults - check source first, then fallback to name/symbol patterns
       const yearnVaults = tokens.filter(token => {
-        // Primary check: was it discovered as a yearn vault?
         if (token.source === 'yearn-vault') {
           return true;
         }
@@ -51,7 +50,7 @@ export class YearnVaultFetcher {
         return priceMap;
       }
 
-      logger.debug(`Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId}`);
+      logger.info(`Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId} (from ${tokens.length} total tokens)`);
 
       // First check cached data from discovery
       const vaultsWithData: { vault: ERC20Token; underlying: string; pricePerShare: bigint }[] = [];

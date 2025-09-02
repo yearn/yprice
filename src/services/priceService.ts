@@ -2,7 +2,6 @@ import { getPriceStorage } from '../storage';
 import { PriceFetcherOrchestrator } from '../fetchers';
 import { ERC20Token, WETH_ADDRESSES } from '../models';
 import { logger } from '../utils';
-import { progressTracker } from '../utils/progressTracker';
 import { betterLogger } from '../utils/betterLogger';
 import tokenDiscoveryService from '../discovery/tokenDiscoveryService';
 import { chunk } from 'lodash';

@@ -35,6 +35,7 @@ export interface ERC20Token {
   name: string;
   decimals: number;
   chainId: number;
+  source?: string;
 }
 
 export interface CurveFactoriesPoolData {

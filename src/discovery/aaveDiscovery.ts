@@ -46,14 +46,12 @@ const AAVE_V3_POOL_ABI = [
   },
 ] as const;
 
-// AToken ABI - currently unused but available for future enhancements
-// const ATOKEN_ABI = [
-//   'function UNDERLYING_ASSET_ADDRESS() view returns (address)',
-//   'function underlyingAssetAddress() view returns (address)',
-//   'function symbol() view returns (string)',
-//   'function name() view returns (string)',
-//   'function decimals() view returns (uint8)',
-// ];
+// ERC20 ABI for fetching token metadata
+const ERC20_ABI = parseAbi([
+  'function symbol() view returns (string)',
+  'function name() view returns (string)',
+  'function decimals() view returns (uint8)',
+]);
 
 export class AAVEDiscovery {
   private chainId: number;
@@ -136,6 +134,10 @@ export class AAVEDiscovery {
 
       const reserveDataResults = await batchReadContracts<ReserveData>(this.chainId, reserveDataContracts);
       
+      // Collect all aToken addresses for metadata fetching
+      const aTokenAddresses: Address[] = [];
+      const aTokenIndexMap: Map<string, number> = new Map();
+      
       reserves.forEach((reserve, index) => {
         // Add underlying token
         tokens.push({
@@ -149,6 +151,9 @@ export class AAVEDiscovery {
           const reserveData = result.result;
           
           if (reserveData.aTokenAddress && reserveData.aTokenAddress !== zeroAddress) {
+            aTokenAddresses.push(reserveData.aTokenAddress);
+            aTokenIndexMap.set(reserveData.aTokenAddress.toLowerCase(), tokens.length);
+            
             tokens.push({
               address: reserveData.aTokenAddress.toLowerCase(),
               chainId: this.chainId,
@@ -166,6 +171,49 @@ export class AAVEDiscovery {
           }
         }
       });
+      
+      // Batch fetch metadata for all aTokens
+      if (aTokenAddresses.length > 0) {
+        const metadataContracts = aTokenAddresses.flatMap(address => [
+          {
+            address,
+            abi: ERC20_ABI,
+            functionName: 'symbol' as const,
+          },
+          {
+            address,
+            abi: ERC20_ABI,
+            functionName: 'name' as const,
+          },
+          {
+            address,
+            abi: ERC20_ABI,
+            functionName: 'decimals' as const,
+          }
+        ]);
+        
+        const metadataResults = await batchReadContracts<string | number>(this.chainId, metadataContracts);
+        
+        // Apply metadata to aTokens
+        aTokenAddresses.forEach((address, i) => {
+          const tokenIndex = aTokenIndexMap.get(address.toLowerCase());
+          if (tokenIndex !== undefined && tokens[tokenIndex]) {
+            const symbolResult = metadataResults[i * 3];
+            const nameResult = metadataResults[i * 3 + 1];
+            const decimalsResult = metadataResults[i * 3 + 2];
+            
+            if (symbolResult?.status === 'success' && symbolResult.result) {
+              tokens[tokenIndex].symbol = symbolResult.result as string;
+            }
+            if (nameResult?.status === 'success' && nameResult.result) {
+              tokens[tokenIndex].name = nameResult.result as string;
+            }
+            if (decimalsResult?.status === 'success' && decimalsResult.result !== undefined) {
+              tokens[tokenIndex].decimals = Number(decimalsResult.result);
+            }
+          }
+        });
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
       logger.warn(`AAVE V3 discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);

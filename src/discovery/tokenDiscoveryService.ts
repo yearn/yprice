@@ -400,6 +400,7 @@ export class TokenDiscoveryService {
         name: token.name || 'Unknown Token',
         decimals: token.decimals || 18,
         chainId: chainId,
+        source: token.source, 
       });
     }
 

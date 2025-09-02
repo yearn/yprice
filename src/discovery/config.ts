@@ -28,7 +28,6 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   10: {
     chainId: 10,
     veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address 
-    // veloApiUrl removed - Velodrome doesn't have public API, using on-chain discovery
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     extraTokens: [
@@ -85,7 +84,6 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   8453: {
     chainId: 8453,
     veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address 
-    // veloApiUrl removed - Aerodrome doesn't have public API, using on-chain discovery
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
@@ -111,7 +109,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x912CE59144191C1204E64559FE8253a0e49E6548', // ARB
     ]
   },
-  // BSC (Binance Smart Chain)
+  // BSC
   56: {
     chainId: 56,
     extraTokens: [
@@ -142,7 +140,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       // Add native and common tokens when available
     ]
   },
-  // Katana (Fluence)
+  // Katana
   747474: {
     chainId: 747474,
     extraTokens: [
