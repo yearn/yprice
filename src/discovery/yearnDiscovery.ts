@@ -30,6 +30,13 @@ const REGISTRY_ADDRESSES: Record<number, string> = {
   42161: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f',
 };
 
+const V3_REGISTRY_ADDRESSES: Record<number, string[]> = {
+  1: [
+    '0xd40ecF29e001c76Dcc4cC0D9cd50520CE845B038', // Current V3 Registry
+    '0xff31A1B020c868F6eA3f61Eb953344920EeCA3af', // Legacy V3 Registry
+  ],
+};
+
 const REGISTRY_ABI = parseAbi([
   'function numVaults() view returns (uint256)',
   'function vaults(uint256 index) view returns (address)',
@@ -47,10 +54,12 @@ export class YearnDiscovery {
   private chainId: number;
   private kongUrl: string = 'https://kong.yearn.farm/api/gql';
   private registryAddress?: string;
+  private v3RegistryAddresses: string[] = [];
 
   constructor(chainId: number, _rpcUrl?: string) {
     this.chainId = chainId;
     this.registryAddress = REGISTRY_ADDRESSES[chainId];
+    this.v3RegistryAddresses = V3_REGISTRY_ADDRESSES[chainId] || [];
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
@@ -60,9 +69,18 @@ export class YearnDiscovery {
       const kongTokens = await this.discoverFromKong();
       tokens.push(...kongTokens);
       
-      if (tokens.length === 0 && this.registryAddress) {
-        const onChainTokens = await this.discoverFromRegistry();
-        tokens.push(...onChainTokens);
+      if (tokens.length === 0 && (this.registryAddress || this.v3RegistryAddresses.length > 0)) {
+        // Try V2 registry if available
+        if (this.registryAddress) {
+          const v2Tokens = await this.discoverFromRegistry();
+          tokens.push(...v2Tokens);
+        }
+        
+        // Try V3 registries if available
+        if (this.v3RegistryAddresses.length > 0) {
+          const v3Tokens = await this.discoverFromV3Registries();
+          tokens.push(...v3Tokens);
+        }
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
@@ -107,7 +125,7 @@ export class YearnDiscovery {
       const vaults = response.data?.data?.vaults;
       
       if (Array.isArray(vaults)) {
-        logger.debug(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`);
+        logger.info(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`);
         
         for (const vault of vaults) {
           // Add vault token
@@ -156,6 +174,11 @@ export class YearnDiscovery {
     } catch (error: any) {
       logger.warn(`Kong GraphQL fetch failed for chain ${this.chainId}: ${error.message || 'Unknown error'}`);
     }
+    
+    // Log discovery summary
+    const vaultCount = tokens.filter(t => t.source === 'yearn-vault').length;
+    const underlyingCount = tokens.filter(t => t.source === 'yearn-underlying').length;
+    logger.info(`YearnDiscovery Kong summary for chain ${this.chainId}: ${vaultCount} vaults, ${underlyingCount} underlying tokens, ${tokens.length} total`);
 
     return tokens;
   }
@@ -218,29 +241,49 @@ export class YearnDiscovery {
     return tokens;
   }
 
-  private async discoverFromRegistry(): Promise<TokenInfo[]> {
+  private async discoverFromV3Registries(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
     
-    if (!this.registryAddress) {
-      return tokens;
+    for (const registryAddress of this.v3RegistryAddresses) {
+      try {
+        const registryTokens = await this.discoverFromSpecificRegistry(registryAddress, 'v3');
+        tokens.push(...registryTokens);
+        logger.info(`Discovered ${registryTokens.length} tokens from V3 registry ${registryAddress} on chain ${this.chainId}`);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
+        logger.warn(`V3 registry ${registryAddress} discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
+      }
     }
+    
+    return tokens;
+  }
 
+  private async discoverFromRegistry(): Promise<TokenInfo[]> {
+    if (!this.registryAddress) {
+      return [];
+    }
+    
+    return this.discoverFromSpecificRegistry(this.registryAddress, 'v2');
+  }
+  
+  private async discoverFromSpecificRegistry(registryAddress: string, version: 'v2' | 'v3'): Promise<TokenInfo[]> {
+    const tokens: TokenInfo[] = [];
     const publicClient = getPublicClient(this.chainId);
 
     try {
       const numVaults = await publicClient.readContract({
-        address: this.registryAddress as Address,
+        address: registryAddress as Address,
         abi: REGISTRY_ABI,
         functionName: 'numVaults',
       }) as bigint;
       const vaultCount = Number(numVaults);
       
-      logger.debug(`Fetching ${vaultCount} Yearn vaults from registry on chain ${this.chainId}`);
+      logger.debug(`Fetching ${vaultCount} Yearn ${version} vaults from registry on chain ${this.chainId}`);
 
       const vaultIndexContracts = [];
       for (let i = 0; i < Math.min(vaultCount, 200); i++) {
         vaultIndexContracts.push({
-          address: this.registryAddress as Address,
+          address: registryAddress as Address,
           abi: REGISTRY_ABI,
           functionName: 'vaults' as const,
           args: [BigInt(i)],
@@ -260,7 +303,7 @@ export class YearnDiscovery {
         tokens.push({
           address: vaultAddress.toLowerCase(),
           chainId: this.chainId,
-          source: 'yearn-vault',
+          source: `yearn-${version}-vault`,
         });
       }
 
@@ -269,7 +312,7 @@ export class YearnDiscovery {
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split("\n")[0] : String(error);
-      logger.warn(`Yearn registry discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
+      logger.warn(`Yearn ${version} registry discovery failed for chain ${this.chainId}: ${(errorMsg || "Unknown error").substring(0, 100)}`);
     }
 
     return tokens;

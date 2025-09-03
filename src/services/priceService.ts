@@ -1,6 +1,6 @@
 import { getStorage, StorageWrapper } from '../storage';
 import { PriceFetcherOrchestrator } from '../fetchers';
-import { ERC20Token, WETH_ADDRESSES } from '../models';
+import { ERC20Token, WETH_ADDRESSES, Price } from '../models';
 import { logger } from '../utils';
 import { betterLogger } from '../utils/betterLogger';
 import tokenDiscoveryService from '../discovery/tokenDiscoveryService';
@@ -37,7 +37,11 @@ export class PriceService {
     return results;
   }
 
-  async fetchAndStorePrices(chainId: number, tokens: ERC20Token[]): Promise<void> {
+  async fetchAndStorePrices(
+    chainId: number, 
+    tokens: ERC20Token[], 
+    existingPrices?: Map<string, Price>
+  ): Promise<Map<string, Price>> {
     try {
       const tokensWithNative = [...tokens];
       const wethAddress = WETH_ADDRESSES[chainId];
@@ -52,7 +56,7 @@ export class PriceService {
         });
       }
       
-      const prices = await this.fetcher.fetchPrices(chainId, tokensWithNative);
+      const prices = await this.fetcher.fetchPrices(chainId, tokensWithNative, existingPrices);
       const storage = new StorageWrapper(getStorage());
       
       if (wethAddress) {
@@ -69,8 +73,11 @@ export class PriceService {
       if (pricesArray.length > 0) {
         await storage.storePrices(chainId, pricesArray);
       }
+      
+      return prices;
     } catch (error) {
       logger.error(`Error fetching prices for chain ${chainId}:`, error);
+      return new Map();
     }
   }
 
@@ -104,27 +111,79 @@ export class PriceService {
           const chainStartTime = Date.now();
           betterLogger.chainInfo(chainId, `Processing ${tokens.length} tokens...`);
           
-          // Smaller batch size for better concurrency and responsiveness
-          const batchSize = chainId === 1 ? 100 : 150; // Mainnet gets smaller batches
-          const batches = chunk(tokens, batchSize);
+          // Helper to determine if a token is a derivative
+          const isDerivative = (token: ERC20Token): boolean => {
+            const source = token.source || '';
+            return source.includes('vault') || 
+                   source.includes('lp') || 
+                   source.includes('pool') || 
+                   source === 'pendle' ||
+                   source === 'gamma-lp' ||
+                   source === 'curve-lp' ||
+                   source === 'balancer-pool';
+          };
+          
+          // Split tokens into base and derivative
+          const baseTokens = tokens.filter(t => !isDerivative(t));
+          const derivativeTokens = tokens.filter(t => isDerivative(t));
+          
+          betterLogger.chainInfo(chainId, `Processing ${baseTokens.length} base tokens and ${derivativeTokens.length} derivative tokens`);
+          
+          // Phase 1: Process all base tokens and collect prices
+          const batchSize = chainId === 1 ? 100 : 150;
+          const baseBatches = chunk(baseTokens, batchSize);
+          const maxConcurrentBatches = 10;
           let errors = 0;
           
-          // Process all batches concurrently with controlled concurrency
-          const maxConcurrentBatches = 10; // Increased concurrency
-          const results = await this.processBatchesConcurrently(
-            batches,
-            maxConcurrentBatches,
-            async (batch) => {
-              try {
-                await this.fetchAndStorePrices(chainId, batch);
-                return { success: true };
-              } catch (error) {
-                errors++;
-                betterLogger.verbose(`Error in batch for chain ${chainId}: ${error}`);
-                return { success: false, error };
+          // Accumulator for all base token prices
+          const accumulatedPrices = new Map<string, Price>();
+          
+          // Process base token batches
+          if (baseBatches.length > 0) {
+            betterLogger.verbose(`Processing ${baseBatches.length} base token batches...`);
+            
+            await this.processBatchesConcurrently(
+              baseBatches,
+              maxConcurrentBatches,
+              async (batch) => {
+                try {
+                  const batchPrices = await this.fetchAndStorePrices(chainId, batch);
+                  // Accumulate prices
+                  batchPrices.forEach((price, address) => {
+                    accumulatedPrices.set(address, price);
+                  });
+                  return { success: true };
+                } catch (error) {
+                  errors++;
+                  betterLogger.verbose(`Error in base batch for chain ${chainId}: ${error}`);
+                  return { success: false, error };
+                }
               }
-            }
-          );
+            );
+          }
+          
+          // Phase 2: Process derivative tokens with all base prices available
+          const derivativeBatches = chunk(derivativeTokens, batchSize);
+          
+          if (derivativeBatches.length > 0) {
+            betterLogger.verbose(`Processing ${derivativeBatches.length} derivative token batches with ${accumulatedPrices.size} base prices...`);
+            
+            await this.processBatchesConcurrently(
+              derivativeBatches,
+              maxConcurrentBatches,
+              async (batch) => {
+                try {
+                  // Pass accumulated prices to derivative processing
+                  await this.fetchAndStorePrices(chainId, batch, accumulatedPrices);
+                  return { success: true };
+                } catch (error) {
+                  errors++;
+                  betterLogger.verbose(`Error in derivative batch for chain ${chainId}: ${error}`);
+                  return { success: false, error };
+                }
+              }
+            );
+          }
           
           // Get final price count after all batches complete
           const storage = new StorageWrapper(getStorage());

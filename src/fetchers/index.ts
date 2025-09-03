@@ -35,12 +35,20 @@ export class PriceFetcherOrchestrator {
 
   async fetchPrices(
     chainId: number, 
-    tokens: ERC20Token[]
+    tokens: ERC20Token[],
+    existingPrices?: Map<string, Price>
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>();
     const progressKey = `fetch-${chainId}-${Date.now()}`;
     
     progressTracker.start(progressKey, 'Price Fetching', tokens.length, chainId);
+    
+    // Initialize with existing prices if provided
+    if (existingPrices) {
+      existingPrices.forEach((price, address) => {
+        priceMap.set(address, price);
+      });
+    }
     
     const symbolMap = new Map<string, string>();
     tokens.forEach(t => symbolMap.set(t.address.toLowerCase(), t.symbol));
@@ -49,7 +57,7 @@ export class PriceFetcherOrchestrator {
     const cachedPrices = priceCache.getMany(chainId, tokens.map(t => t.address));
     cachedPrices.forEach((price, address) => priceMap.set(address, price));
     
-    progressTracker.update(progressKey, priceMap.size, `${cachedPrices.size} from cache`);
+    progressTracker.update(progressKey, priceMap.size, `${cachedPrices.size} from cache${existingPrices ? ` + ${existingPrices.size} existing` : ''}`);
     
     let missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
     
@@ -106,7 +114,7 @@ export class PriceFetcherOrchestrator {
     const results = await Promise.allSettled(independentFetchers);
     
     // Process results and update price map
-    results.forEach((result, index) => {
+    results.forEach((result) => {
       if (result.status === 'fulfilled') {
         result.value.forEach((price, address) => {
           if (price.price > BigInt(0) && !priceMap.has(address)) {

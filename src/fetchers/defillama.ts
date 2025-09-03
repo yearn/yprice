@@ -147,7 +147,6 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
               prices.set(token.address.toLowerCase(), {
                 address: token.address,
                 price: parseUnits(data.price.toString(), 6),
-                humanizedPrice: data.price,
                 source: PriceSource.DEFILLAMA
               });
             }
@@ -248,7 +247,6 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           prices.set(ajnaToken.address.toLowerCase(), {
             address: ajnaToken.address,
             price: parseUnits(data.price.toString(), 6),
-            humanizedPrice: data.price,
             source: PriceSource.DEFILLAMA
           });
         }

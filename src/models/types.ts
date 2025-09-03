@@ -25,7 +25,6 @@ export const WETH_ADDRESSES: Record<number, string> = {
 export interface Price {
   address: string;
   price: bigint;
-  humanizedPrice?: number;
   source: string;
 }
 
@@ -123,7 +122,6 @@ export interface VeloPairs {
 export interface PriceResponse {
   address: string;
   price: string;
-  humanizedPrice?: number;
   source: string;
 }
 

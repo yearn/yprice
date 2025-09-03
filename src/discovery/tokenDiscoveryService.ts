@@ -145,10 +145,11 @@ export class TokenDiscoveryService {
       if ((config.yearnRegistryAddress || chainId) && rpcUrl) {
         sourceNames.push('Yearn');
         discoveryPromises.push(
-          new YearnDiscovery(chainId, rpcUrl).discoverTokens().catch(err => {
-            logger.warn(`Chain ${chainId}: Yearn discovery failed: ${err.message}`);
-            return null;
-          })
+          withTimeout(
+            new YearnDiscovery(chainId, rpcUrl).discoverTokens(),
+            60000, // 60s for Yearn discovery
+            'Yearn'
+          )
         );
       }
 
@@ -317,13 +318,19 @@ export class TokenDiscoveryService {
           if (tokens.length > 0) {
             const source = tokens[0]?.source || 'unknown';
             sourceStats[source] = tokens.length;
+            logger.debug(`Chain ${chainId}: ${sourceName} returned ${tokens.length} tokens`);
+          } else {
+            logger.warn(`Chain ${chainId}: ${sourceName} returned 0 tokens`);
           }
         } else if (result.status === 'fulfilled' && result.value === null) {
           // Timeout case
           timeoutCount++;
+          logger.warn(`Chain ${chainId}: ${sourceName} timed out or returned null`);
         } else if (result.status === 'rejected') {
           // Actual failure
-          failedSources.push(`${sourceName}: ${result.reason}`);
+          const errorMsg = result.reason?.message || result.reason || 'Unknown error';
+          failedSources.push(`${sourceName}: ${errorMsg}`);
+          logger.error(`Chain ${chainId}: ${sourceName} failed: ${errorMsg}`);
         }
       });
       
@@ -366,9 +373,27 @@ export class TokenDiscoveryService {
         logger.debug(`Chain ${chainId}: Added ${config.extraTokens.length} configured tokens`);
       }
 
+      // Log token counts before deduplication
+      logger.debug(`Chain ${chainId}: Total tokens before deduplication: ${allTokens.length}`);
+      
       // Deduplicate and store discovered tokens
       const uniqueTokens = this.deduplicateTokens(allTokens);
       this.discoveredTokens.set(chainId, uniqueTokens);
+      
+      // Debug: Check for specific vault
+      const TARGET_VAULT = '0x32651dd149a6ec22734882f790cbeb21402663f9';
+      const foundInAll = allTokens.find(t => t.address === TARGET_VAULT);
+      const foundInUnique = uniqueTokens.find(t => t.address === TARGET_VAULT);
+      if (foundInAll && !foundInUnique) {
+        logger.warn(`Chain ${chainId}: Target vault ${TARGET_VAULT} was removed during deduplication`);
+      } else if (foundInAll) {
+        logger.debug(`Chain ${chainId}: Target vault ${TARGET_VAULT} found with source: ${foundInAll.source}`);
+      }
+      
+      // Log deduplication results
+      if (allTokens.length !== uniqueTokens.length) {
+        logger.info(`Chain ${chainId}: Deduplication removed ${allTokens.length - uniqueTokens.length} duplicate tokens`);
+      }
       
       const elapsed = Date.now() - startTime;
       logger.info(`Chain ${chainId}: Discovery complete in ${elapsed}ms (${uniqueTokens.length} unique tokens)`);

@@ -158,14 +158,43 @@ export class YearnVaultFetcher {
 
       // Calculate prices for all vaults
       let successCount = 0;
+      let missingUnderlyingCount = 0;
+      let zeroVaultPriceCount = 0;
+      
+      logger.debug(`Yearn Vault: Have data for ${vaultsWithData.length} vaults, calculating prices...`);
+      logger.debug(`Yearn Vault: Available underlying prices: ${underlyingPrices.size}`);
+      
       vaultsWithData.forEach(({ vault, underlying, pricePerShare }) => {
         const underlyingPrice = underlyingPrices.get(underlying);
 
         if (underlyingPrice && underlyingPrice.price > BigInt(0)) {
           // Calculate vault price
-          // pricePerShare is usually in 18 decimals (1e18 = 1:1)
-          // Result should be in 6 decimals
-          const vaultPrice = (pricePerShare * underlyingPrice.price) / BigInt(10 ** 18);
+          // Some vaults (like USDT vault) use underlying token decimals for pricePerShare
+          // Others use 18 decimals. We need to determine the correct divisor.
+          
+          // Get cached data to check decimals
+          const cached = discoveryPriceCache.get(chainId, vault.address);
+          let pricePerShareDecimals = 18; // Default assumption
+          
+          // If vault decimals match underlying decimals, pricePerShare likely uses those decimals
+          if (cached?.data?.decimals && cached?.data?.underlyingDecimals) {
+            if (cached.data.decimals === cached.data.underlyingDecimals) {
+              pricePerShareDecimals = cached.data.decimals;
+              logger.debug(`Vault ${vault.address} uses ${pricePerShareDecimals} decimals for pricePerShare`);
+            }
+          }
+          
+          // Special case for known USDT/USDC vaults with 6 decimal pricePerShare
+          const sixDecimalUnderlyings = new Set([
+            '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
+            '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
+          ]);
+          if (sixDecimalUnderlyings.has(underlying.toLowerCase())) {
+            pricePerShareDecimals = 6;
+          }
+          
+          // Calculate vault price with correct decimals
+          const vaultPrice = (pricePerShare * underlyingPrice.price) / BigInt(10 ** pricePerShareDecimals);
 
           if (vaultPrice > BigInt(0)) {
             priceMap.set(vault.address.toLowerCase(), {
@@ -174,12 +203,24 @@ export class YearnVaultFetcher {
               source: 'yearn-vault',
             });
             successCount++;
+          } else {
+            zeroVaultPriceCount++;
+            logger.debug(`Zero price for vault ${vault.address}: pricePerShare=${pricePerShare}, underlyingPrice=${underlyingPrice.price}, decimals=${pricePerShareDecimals}`);
+          }
+        } else {
+          missingUnderlyingCount++;
+          if (vault.address.toLowerCase() === '0x32651dd149a6ec22734882f790cbeb21402663f9') {
+            logger.warn(`Target vault missing underlying price! Underlying: ${underlying}, Has price: ${!!underlyingPrice}`);
           }
         }
       });
 
-      if (successCount > 0) {
-        logger.info(`Yearn Vault: Calculated ${successCount} vault prices on chain ${chainId}`);
+      logger.info(`Yearn Vault: Calculated ${successCount} vault prices on chain ${chainId}`);
+      if (missingUnderlyingCount > 0) {
+        logger.info(`Yearn Vault: ${missingUnderlyingCount} vaults missing underlying prices`);
+      }
+      if (zeroVaultPriceCount > 0) {
+        logger.debug(`Yearn Vault: ${zeroVaultPriceCount} vaults calculated to zero price`);
       }
     } catch (error) {
       logger.error(`Yearn Vault fetcher failed for chain ${chainId}:`, error);

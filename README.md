@@ -64,7 +64,6 @@ GET /prices/all
 Returns prices for all tokens across all supported chains.
 
 Query Parameters:
-- `humanized` (optional): Return human-readable prices instead of raw bigints
 
 ### Get Chain Prices
 
@@ -115,6 +114,7 @@ POST /prices/some
 ```
 
 Request body:
+
 ```json
 {
   "addresses": ["0x...", "0x..."],
@@ -172,19 +172,11 @@ The service fetches prices from multiple sources in order of priority:
 ## API Response Format
 
 ### Raw Price Response (default)
+
 ```json
 {
   "address": "0x...",
   "price": "1000000",
-  "source": "defillama"
-}
-```
-
-### Humanized Price Response (with ?humanized=true)
-```json
-{
-  "address": "0x...",
-  "humanizedPrice": 1.0,
   "source": "defillama"
 }
 ```
