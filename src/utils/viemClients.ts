@@ -25,6 +25,11 @@ const sonic = defineChain({
   blockExplorers: {
     default: { name: 'Sonic Explorer', url: 'https://sonicscan.org' },
   },
+  contracts: {
+    multicall3: {
+      address: '0xca11bde05977b3631167028862be2a173976ca11',
+    },
+  },
 });
 
 const katana = defineChain({
@@ -40,6 +45,11 @@ const katana = defineChain({
   },
   blockExplorers: {
     default: { name: 'Katana Explorer', url: 'https://katana.network' },
+  },
+  contracts: {
+    multicall3: {
+      address: '0xca11bde05977b3631167028862be2a173976ca11',
+    },
   },
 });
 

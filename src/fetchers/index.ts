@@ -58,121 +58,104 @@ export class PriceFetcherOrchestrator {
       return priceMap;
     }
 
-    const handleError = () => (progressTracker.error(progressKey), new Map<string, Price>());
+    const handleError = (error: any) => {
+      logger.debug(`Fetcher error: ${error.message || 'Unknown error'}`);
+      return new Map<string, Price>();
+    };
     
-    // Step 1: External APIs (fastest, most reliable)
-    progressTracker.update(progressKey, priceMap.size, 'Fetching from external APIs...');
+    // Run all independent fetchers in parallel
+    progressTracker.update(progressKey, priceMap.size, 'Fetching prices from all sources...');
     
-    // DeFiLlama first
-    const defillamaResults = await this.defillama.fetchPrices(chainId, missingTokens).catch(handleError);
-    defillamaResults.forEach((price, address) => {
-      if (price.price > BigInt(0) && !priceMap.has(address)) {
-        // Skip known incorrect prices from DeFiLlama
-        if (chainId === 1 && address === '0x27b5739e22ad9033bcbf192059122d163b60349d') {
-          // st-yCRV has incorrect price on DeFiLlama
-          return;
-        }
-        if (chainId === 1 && address === '0x69833361991ed76f9e8dbbcdf9ea1520febfb4a7') {
-          // st-ETH has incorrect price on DeFiLlama
-          return;
-        }
-        priceMap.set(address, price);
-        priceCache.set(chainId, address, price, symbolMap.get(address));
-      }
-    });
+    // Known incorrect prices to skip from DeFiLlama
+    const skipDefillamaAddresses = new Set([
+      chainId === 1 ? '0x27b5739e22ad9033bcbf192059122d163b60349d' : '', // st-yCRV
+      chainId === 1 ? '0x69833361991ed76f9e8dbbcdf9ea1520febfb4a7' : ''  // st-ETH
+    ].filter(Boolean));
     
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-    if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey);
-      return priceMap;
-    }
-    
-    // Curve Factories API
-    const curveFactoriesResults = await this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError);
-    curveFactoriesResults.forEach((price, address) => {
-      if (price.price > BigInt(0) && !priceMap.has(address)) {
-        priceMap.set(address, price);
-        priceCache.set(chainId, address, price, symbolMap.get(address));
-      }
-    });
-    
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-    if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey);
-      return priceMap;
-    }
-    
-    // Protocol-specific APIs
-    const protocolApis = [
+    // All price fetchers that don't depend on other prices
+    const independentFetchers = [
+      // External APIs
+      this.defillama.fetchPrices(chainId, missingTokens)
+        .then(results => {
+          const filtered = new Map();
+          results.forEach((price, address) => {
+            if (!skipDefillamaAddresses.has(address)) {
+              filtered.set(address, price);
+            }
+          });
+          return filtered;
+        })
+        .catch(handleError),
+      this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError),
       this.gamma.fetchPrices(chainId, missingTokens).catch(handleError),
-      this.pendle.fetchPrices(chainId, missingTokens).catch(handleError)
-    ];
-    
-    const protocolResults = await Promise.all(protocolApis);
-    protocolResults.forEach(result => 
-      result.forEach((price, address) => {
-        if (price.price > BigInt(0) && !priceMap.has(address)) {
-          priceMap.set(address, price);
-          priceCache.set(chainId, address, price, symbolMap.get(address));
-        }
-      })
-    );
-    
-    progressTracker.update(progressKey, priceMap.size, 'External APIs complete');
-    
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-    if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey);
-      return priceMap;
-    }
-    
-    // Step 2: On-chain oracles (slower, but reliable for remaining tokens)
-    progressTracker.update(progressKey, priceMap.size, 'Checking on-chain oracles...');
-    
-    const onChainPromises = [
-      ...(chainId === 10 || chainId === 8453 ? 
-        [this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)] : []),
+      this.pendle.fetchPrices(chainId, missingTokens).catch(handleError),
+      
+      // On-chain oracles
       this.lensOracle.fetchPrices(chainId, missingTokens).catch(handleError),
-      this.curveAmm.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
     ];
     
-    const onChainResults = await Promise.all(onChainPromises);
-    onChainResults.forEach(result => 
-      result.forEach((price, address) => {
-        if (price.price > BigInt(0) && !priceMap.has(address)) {
-          priceMap.set(address, price);
-          priceCache.set(chainId, address, price, symbolMap.get(address));
-        }
-      })
-    );
-    
-    progressTracker.update(progressKey, priceMap.size, 'On-chain oracles complete');
-    
-    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
-    if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey);
-      return priceMap;
+    // Chain-specific fetchers
+    if (chainId === 10 || chainId === 8453) {
+      // Velodrome needs priceMap for reference prices
+      independentFetchers.push(
+        this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError)
+      );
     }
-
-    // Step 3: Vault pricing (for wrapped/yield-bearing tokens)
-    progressTracker.update(progressKey, priceMap.size, 'Checking vault prices...');
     
-    const vaultFetchers = [
-      () => this.erc4626.fetchPrices(chainId, missingTokens, priceMap),
-      () => this.yearnVault.fetchPrices(chainId, missingTokens, priceMap)
-    ];
+    // Run all independent fetchers concurrently
+    const results = await Promise.allSettled(independentFetchers);
     
-    for (const fetcher of vaultFetchers) {
-      try {
-        const vaultPrices = await fetcher();
-        vaultPrices.forEach((price, address) => {
-          if (price.price > BigInt(0)) {
+    // Process results and update price map
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        result.value.forEach((price, address) => {
+          if (price.price > BigInt(0) && !priceMap.has(address)) {
             priceMap.set(address, price);
             priceCache.set(chainId, address, price, symbolMap.get(address));
           }
         });
-      } catch { progressTracker.error(progressKey); }
+      }
+    });
+    
+    progressTracker.update(progressKey, priceMap.size, 'Independent fetchers complete');
+    
+    missingTokens = tokens.filter(t => !priceMap.has(t.address.toLowerCase()));
+    if (missingTokens.length === 0) {
+      progressTracker.complete(progressKey);
+      return priceMap;
     }
+    
+    // Dependent fetchers (need existing prices)
+    progressTracker.update(progressKey, priceMap.size, 'Running dependent fetchers...');
+    
+    const dependentFetchers = [
+      // CurveAmm needs priceMap for LP calculations
+      this.curveAmm.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
+      // Vault fetchers need underlying token prices
+      this.erc4626.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
+      this.yearnVault.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+    ];
+    
+    // If Velodrome needs existing prices, run it in the dependent phase
+    if ((chainId === 10 || chainId === 8453) && priceMap.size > 0) {
+      dependentFetchers.push(
+        this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+      );
+    }
+    
+    const dependentResults = await Promise.allSettled(dependentFetchers);
+    
+    // Process dependent results
+    dependentResults.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        result.value.forEach((price, address) => {
+          if (price.price > BigInt(0) && !priceMap.has(address)) {
+            priceMap.set(address, price);
+            priceCache.set(chainId, address, price, symbolMap.get(address));
+          }
+        });
+      }
+    });
 
     progressTracker.complete(progressKey);
     

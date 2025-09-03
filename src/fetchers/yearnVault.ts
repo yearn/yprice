@@ -71,13 +71,6 @@ export class YearnVaultFetcher {
       
       if (vaultsWithData.length > 0) {
         logger.info(`Yearn Vault: Using ${vaultsWithData.length} cached pricePerShare values`);
-        // Log specific vaults
-        vaultsWithData.forEach(({ vault, underlying, pricePerShare }) => {
-          if (vault.address.toLowerCase() === '0x028ec7330ff87667b6dfb0d94b954c820195336c' ||
-              vault.address.toLowerCase() === '0x182863131f9a4630ff9e27830d945b1413e347e8') {
-            logger.info(`Processing vault ${vault.address}: underlying=${underlying}, pricePerShare=${pricePerShare}`);
-          }
-        });
       }
       
       // For vaults without cached data, fetch on-chain
@@ -181,12 +174,6 @@ export class YearnVaultFetcher {
               source: 'yearn-vault',
             });
             successCount++;
-            
-            // Log specific vaults
-            if (vault.address.toLowerCase() === '0x028ec7330ff87667b6dfb0d94b954c820195336c' ||
-                vault.address.toLowerCase() === '0x182863131f9a4630ff9e27830d945b1413e347e8') {
-              logger.info(`Priced vault ${vault.address}: underlyingPrice=${underlyingPrice.price}, vaultPrice=${vaultPrice} ($${Number(vaultPrice) / 1e6})`);
-            }
           }
         }
       });

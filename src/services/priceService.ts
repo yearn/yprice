@@ -10,6 +10,32 @@ import { zeroAddress } from 'viem';
 export class PriceService {
   private fetcher = new PriceFetcherOrchestrator();
   private fetchInterval: NodeJS.Timeout | null = null;
+  
+  // Utility method for controlled concurrent processing
+  private async processBatchesConcurrently<T, R>(
+    items: T[],
+    maxConcurrent: number,
+    processor: (item: T) => Promise<R>
+  ): Promise<R[]> {
+    const results: R[] = [];
+    const executing: Promise<void>[] = [];
+    
+    for (const item of items) {
+      const promise = processor(item).then(result => {
+        results.push(result);
+      });
+      
+      executing.push(promise);
+      
+      if (executing.length >= maxConcurrent) {
+        await Promise.race(executing);
+        executing.splice(executing.findIndex(p => p === promise), 1);
+      }
+    }
+    
+    await Promise.all(executing);
+    return results;
+  }
 
   async fetchAndStorePrices(chainId: number, tokens: ERC20Token[]): Promise<void> {
     try {
@@ -68,7 +94,7 @@ export class PriceService {
       let totalPricesFound = 0;
       let totalErrors = 0;
       
-      // Process chains with cleaner logging
+      // Process chains with optimized batching
       const chainResults = await Promise.all(
         Array.from(tokensByChain.entries()).map(async ([chainId, tokens]) => {
           if (tokens.length === 0) {
@@ -78,29 +104,27 @@ export class PriceService {
           const chainStartTime = Date.now();
           betterLogger.chainInfo(chainId, `Processing ${tokens.length} tokens...`);
           
-          const batchSize = 500;
+          // Smaller batch size for better concurrency and responsiveness
+          const batchSize = chainId === 1 ? 100 : 150; // Mainnet gets smaller batches
           const batches = chunk(tokens, batchSize);
           let errors = 0;
           
-          // Process in smaller concurrent groups
-          const batchGroups = chunk(batches, 3);
-          for (const batchGroup of batchGroups) {
-            await Promise.all(
-              batchGroup.map(async batch => {
-                try {
-                  await this.fetchAndStorePrices(chainId, batch);
-                } catch (error) {
-                  errors++;
-                  betterLogger.verbose(`Error in batch for chain ${chainId}: ${error}`);
-                }
-              })
-            );
-            
-            // Small delay between batch groups
-            if (batchGroups.indexOf(batchGroup) < batchGroups.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 200));
+          // Process all batches concurrently with controlled concurrency
+          const maxConcurrentBatches = 10; // Increased concurrency
+          const results = await this.processBatchesConcurrently(
+            batches,
+            maxConcurrentBatches,
+            async (batch) => {
+              try {
+                await this.fetchAndStorePrices(chainId, batch);
+                return { success: true };
+              } catch (error) {
+                errors++;
+                betterLogger.verbose(`Error in batch for chain ${chainId}: ${error}`);
+                return { success: false, error };
+              }
             }
-          }
+          );
           
           // Get final price count after all batches complete
           const storage = new StorageWrapper(getStorage());
