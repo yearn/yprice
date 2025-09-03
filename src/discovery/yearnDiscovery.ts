@@ -140,10 +140,12 @@ export class YearnDiscovery {
             if (vault.pricePerShare) {
               const pricePerShare = BigInt(vault.pricePerShare);
               const underlyingAddress = vault.asset?.address || vault.token;
+              const underlyingDecimals = vault.asset?.decimals;
               
               discoveryPriceCache.set(this.chainId, vault.address, undefined, 'yearn-vault', {
                 pricePerShare,
                 underlyingAddress: underlyingAddress?.toLowerCase(),
+                underlyingDecimals,
               });
             }
           }

@@ -51,6 +51,12 @@ export class YearnVaultFetcher {
       }
 
       logger.info(`Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId} (from ${tokens.length} total tokens)`);
+      
+      // Create a map of token addresses to their decimals for quick lookup
+      const tokenDecimalsMap = new Map<string, number>();
+      tokens.forEach(token => {
+        tokenDecimalsMap.set(token.address.toLowerCase(), token.decimals);
+      });
 
       // First check cached data from discovery
       const vaultsWithData: { vault: ERC20Token; underlying: string; pricePerShare: bigint }[] = [];
@@ -169,28 +175,26 @@ export class YearnVaultFetcher {
 
         if (underlyingPrice && underlyingPrice.price > BigInt(0)) {
           // Calculate vault price
-          // Some vaults (like USDT vault) use underlying token decimals for pricePerShare
-          // Others use 18 decimals. We need to determine the correct divisor.
+          // Yearn vaults use their underlying token's decimals for pricePerShare
           
-          // Get cached data to check decimals
-          const cached = discoveryPriceCache.get(chainId, vault.address);
-          let pricePerShareDecimals = 18; // Default assumption
+          // Get underlying token's decimals from the token map
+          let pricePerShareDecimals = tokenDecimalsMap.get(underlying.toLowerCase());
           
-          // If vault decimals match underlying decimals, pricePerShare likely uses those decimals
-          if (cached?.data?.decimals && cached?.data?.underlyingDecimals) {
-            if (cached.data.decimals === cached.data.underlyingDecimals) {
+          // If not found in token map, try cached data
+          if (!pricePerShareDecimals) {
+            const cached = discoveryPriceCache.get(chainId, vault.address);
+            if (cached?.data?.underlyingDecimals) {
+              pricePerShareDecimals = cached.data.underlyingDecimals;
+            } else if (cached?.data?.decimals && vault.decimals === cached.data.decimals) {
+              // If vault decimals match cached decimals, use those
               pricePerShareDecimals = cached.data.decimals;
-              logger.debug(`Vault ${vault.address} uses ${pricePerShareDecimals} decimals for pricePerShare`);
             }
           }
           
-          // Special case for known USDT/USDC vaults with 6 decimal pricePerShare
-          const sixDecimalUnderlyings = new Set([
-            '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
-            '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
-          ]);
-          if (sixDecimalUnderlyings.has(underlying.toLowerCase())) {
-            pricePerShareDecimals = 6;
+          // Default to 18 if we still don't have decimals
+          if (!pricePerShareDecimals) {
+            pricePerShareDecimals = 18;
+            logger.debug(`Using default 18 decimals for vault ${vault.address} (underlying: ${underlying})`);
           }
           
           // Calculate vault price with correct decimals
