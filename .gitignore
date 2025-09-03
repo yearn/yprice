@@ -16,3 +16,16 @@ coverage/
 *.swp
 *.swo
 *~
+
+# Vercel
+.vercel
+.vercel/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vercel compiles API TypeScript files in-place
+api/**/*.js
+api/**/*.js.map
+api/**/*.d.ts
+api/**/*.d.ts.map

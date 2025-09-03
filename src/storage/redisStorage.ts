@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { Price, ChainConfig, SUPPORTED_CHAINS } from '../models';
+import { Price, SUPPORTED_CHAINS } from '../models';
 import { logger } from '../utils';
 
 interface PriceCacheEntry extends Price {
@@ -122,7 +122,7 @@ export class RedisStorage {
       return { asMap, asSlice };
     }
     
-    for (const [address, entry] of Object.entries(chainData)) {
+    for (const [, entry] of Object.entries(chainData)) {
       const { timestamp, ...price } = entry;
       asMap.set(price.address, price);
       asSlice.push(price);
@@ -136,22 +136,44 @@ export class RedisStorage {
     
     // Get all chain keys at once
     const chainIds = Object.values(SUPPORTED_CHAINS).map(c => c.id);
+    logger.info(`[RedisStorage] Fetching prices for chains: ${chainIds.join(', ')}`);
+    
     const pipeline = this.redis.pipeline();
     
     for (const chainId of chainIds) {
-      pipeline.get(this.getChainKey(chainId));
+      const key = this.getChainKey(chainId);
+      logger.debug(`[RedisStorage] Adding key to pipeline: ${key}`);
+      pipeline.get(key);
     }
     
     const results = await pipeline.exec();
+    logger.info(`[RedisStorage] Pipeline returned ${results.length} results`);
     
     for (let i = 0; i < results.length; i++) {
       const chainId = chainIds[i];
+      if (!chainId) continue;
       const result = results[i];
       
-      if (result && typeof result === 'object' && 'result' in result && result.result) {
+      logger.debug(`[RedisStorage] Result for chain ${chainId}:`, JSON.stringify(result).substring(0, 200));
+      
+      // Handle different response formats from Redis pipeline
+      let rawData = null;
+      if (result !== null && result !== undefined) {
+        // Check if result is wrapped in { result: ... } format
+        if (typeof result === 'object' && 'result' in result) {
+          rawData = result.result;
+        } else {
+          // Direct result from pipeline
+          rawData = result;
+        }
+      }
+      
+      if (rawData) {
         try {
           let chainData: ChainPriceData;
-          const rawData = result.result;
+          
+          logger.debug(`[RedisStorage] Raw data type for chain ${chainId}: ${typeof rawData}`);
+          logger.debug(`[RedisStorage] Raw data sample for chain ${chainId}: ${JSON.stringify(rawData).substring(0, 200)}`);
           
           // Handle both string and object responses from Redis
           if (typeof rawData === 'string') {
@@ -162,7 +184,14 @@ export class RedisStorage {
           
           const chainMap = new Map<string, Price>();
           
-          for (const [address, entry] of Object.entries(chainData)) {
+          logger.debug(`[RedisStorage] Chain data keys for chain ${chainId}: ${Object.keys(chainData).slice(0, 5).join(', ')}...`);
+          
+          for (const [, entry] of Object.entries(chainData)) {
+            if (!entry || typeof entry !== 'object') {
+              logger.warn(`[RedisStorage] Invalid entry in chain ${chainId}:`, entry);
+              continue;
+            }
+            
             if (typeof entry.price === 'string') {
               entry.price = BigInt(entry.price);
             }
@@ -171,14 +200,20 @@ export class RedisStorage {
           }
           
           if (chainMap.size > 0) {
+            logger.info(`[RedisStorage] Found ${chainMap.size} prices for chain ${chainId}`);
             allPrices.set(chainId, chainMap);
+          } else {
+            logger.warn(`[RedisStorage] No prices found for chain ${chainId}`);
           }
         } catch (error) {
-          logger.error(`Failed to parse chain data for chain ${chainId}:`, error);
+          logger.error(`[RedisStorage] Failed to parse chain data for chain ${chainId}:`, error);
         }
+      } else {
+        logger.debug(`[RedisStorage] No data found for chain ${chainId}`);
       }
     }
     
+    logger.info(`[RedisStorage] Final result: ${allPrices.size} chains with prices`);
     return allPrices;
   }
 

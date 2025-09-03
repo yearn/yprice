@@ -2,7 +2,6 @@ import axios from 'axios';
 import https from 'https';
 import { ERC20Token, Price } from '../models';
 import { logger } from '../utils';
-import { getPriceStorage } from '../storage';
 
 interface CurvePoolData {
   id: string;

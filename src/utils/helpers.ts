@@ -1,4 +1,5 @@
-import { chunk } from 'lodash';
+import lodash from 'lodash';
+const { chunk } = lodash;
 
 export const toChecksumAddress = (address: string): string => {
   try {

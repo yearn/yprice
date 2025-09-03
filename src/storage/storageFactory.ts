@@ -2,6 +2,7 @@ import { StorageInterface } from './storageInterface';
 import { PriceStorage } from './priceStorage';
 import { RedisStorage } from './redisStorage';
 import { logger } from '../utils';
+import { Price } from '../models';
 
 export type StorageType = 'file' | 'redis';
 

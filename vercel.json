@@ -1,0 +1,67 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".",
+  "functions": {
+    "api/prices.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/prices/chain/[chainId].ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/prices/tokens/[list].ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/healthcheck.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/index.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/prices",
+      "destination": "/api/prices"
+    },
+    {
+      "source": "/prices/chain/:chainId",
+      "destination": "/api/prices/chain/:chainId"
+    },
+    {
+      "source": "/prices/tokens/:list",
+      "destination": "/api/prices/tokens/:list"
+    },
+    {
+      "source": "/prices/:path*",
+      "destination": "/api/prices/:path*"
+    },
+    {
+      "source": "/healthcheck",
+      "destination": "/api/healthcheck"
+    },
+    {
+      "source": "/",
+      "destination": "/api/index"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
+      ]
+    }
+  ],
+  "env": {
+    "STORAGE_TYPE": "redis",
+    "CACHE_TTL_SECONDS": "0"
+  }
+}
