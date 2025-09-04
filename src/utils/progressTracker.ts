@@ -87,16 +87,6 @@ export class ProgressTracker extends EventEmitter {
     return
   }
 
-  private createProgressBar(percent: number, width = 20, chars = ['█', '░']): string {
-    const safePercent = Math.max(0, Math.min(100, percent))
-    const filled = Math.round((safePercent / 100) * width)
-    return '[' + (chars[0] || '').repeat(filled) + (chars[1] || '').repeat(width - filled) + ']'
-  }
-
-  private createMiniProgressBar(percent: number): string {
-    return this.createProgressBar(percent, 10, ['▪', '·'])
-  }
-
   private startDisplayInterval(): void {
     // Don't start interval if verbose logs are disabled
     if (process.env.DISABLE_VERBOSE_LOGS === 'true') {

@@ -13,7 +13,6 @@ import { CurveFactoriesFetcher } from 'fetchers/curveFactories'
 import { DefilllamaFetcher } from 'fetchers/defillama'
 import { ERC4626Fetcher } from 'fetchers/erc4626'
 import { GammaFetcher } from 'fetchers/gamma'
-import { LensOracleFetcher } from 'fetchers/lensOracle'
 import { PendleFetcher } from 'fetchers/pendle'
 import { VelodromeFetcher } from 'fetchers/velodrome'
 import { YearnVaultFetcher } from 'fetchers/yearnVault'
@@ -31,7 +30,7 @@ export class PriceFetcherOrchestrator {
   private gamma = new GammaFetcher()
   private pendle = new PendleFetcher()
   private curveAmm = new CurveAmmFetcher()
-  private lensOracle = new LensOracleFetcher()
+  // private lensOracle = new LensOracleFetcher()
   private erc4626 = new ERC4626Fetcher()
   private yearnVault = new YearnVaultFetcher()
 
@@ -48,7 +47,7 @@ export class PriceFetcherOrchestrator {
     // Get supported price fetchers for this chain
     const config = DISCOVERY_CONFIGS[chainId]
     const supportedFetchers = config?.supportedPriceFetchers || []
-    
+
     // If no supported fetchers configured, use default behavior
     const shouldRunFetcher = (fetcher: PriceFetcher): boolean => {
       if (supportedFetchers.length === 0) return true
@@ -122,32 +121,28 @@ export class PriceFetcherOrchestrator {
             })
             return filtered
           })
-          .catch(handleError)
+          .catch(handleError),
       )
     }
 
     // Other API-based fetchers
     if (shouldRunFetcher('curve-factories')) {
       independentFetchers.push(
-        this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError)
+        this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError),
       )
     }
 
     if (shouldRunFetcher('gamma')) {
-      independentFetchers.push(
-        this.gamma.fetchPrices(chainId, missingTokens).catch(handleError)
-      )
+      independentFetchers.push(this.gamma.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
     if (shouldRunFetcher('pendle')) {
-      independentFetchers.push(
-        this.pendle.fetchPrices(chainId, missingTokens).catch(handleError)
-      )
+      independentFetchers.push(this.pendle.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
     if (shouldRunFetcher('velodrome')) {
       independentFetchers.push(
-        this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError)
+        this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError),
       )
     }
 
@@ -182,27 +177,31 @@ export class PriceFetcherOrchestrator {
     // CurveAmm needs priceMap for LP calculations
     if (shouldRunFetcher('curve-amm')) {
       dependentFetchers.push(
-        this.curveAmm.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+        this.curveAmm.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
       )
     }
 
     // Vault fetchers need underlying token prices
     if (shouldRunFetcher('erc4626')) {
       dependentFetchers.push(
-        this.erc4626.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+        this.erc4626.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
       )
     }
 
     if (shouldRunFetcher('yearn-vault')) {
       dependentFetchers.push(
-        this.yearnVault.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+        this.yearnVault.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
       )
     }
 
     // If Velodrome needs existing prices and wasn't run in independent phase
-    if (shouldRunFetcher('velodrome') && priceMap.size > 0 && !independentFetchers.some(f => f.toString().includes('velodrome'))) {
+    if (
+      shouldRunFetcher('velodrome') &&
+      priceMap.size > 0 &&
+      !independentFetchers.some((f) => f.toString().includes('velodrome'))
+    ) {
       dependentFetchers.push(
-        this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+        this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
       )
     }
 

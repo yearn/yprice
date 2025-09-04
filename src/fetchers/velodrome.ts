@@ -132,24 +132,26 @@ interface SugarPoolData {
 
 export class VelodromeFetcher {
   private fetchingInProgress = new Map<number, Promise<Map<string, Price>>>()
-  
+
   async fetchPrices(
     chainId: number,
     _tokens: ERC20Token[],
     existingPrices: Map<string, Price>,
   ): Promise<Map<string, Price>> {
     logger.info(`[Velodrome] fetchPrices called for chain ${chainId}`)
-    
+
     // Prevent multiple concurrent fetches for the same chain
     const existingFetch = this.fetchingInProgress.get(chainId)
     if (existingFetch) {
-      logger.info(`[Velodrome] Fetch already in progress for chain ${chainId}, returning existing promise`)
+      logger.info(
+        `[Velodrome] Fetch already in progress for chain ${chainId}, returning existing promise`,
+      )
       return existingFetch
     }
-    
+
     const fetchPromise = this._doFetchPrices(chainId, _tokens, existingPrices)
     this.fetchingInProgress.set(chainId, fetchPromise)
-    
+
     try {
       const result = await fetchPromise
       return result
@@ -157,7 +159,7 @@ export class VelodromeFetcher {
       this.fetchingInProgress.delete(chainId)
     }
   }
-  
+
   private async _doFetchPrices(
     chainId: number,
     _tokens: ERC20Token[],
@@ -205,7 +207,10 @@ export class VelodromeFetcher {
 
           // Add timeout to prevent hanging
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`LP Sugar call timeout after ${timeout}ms`)), timeout),
+            setTimeout(
+              () => reject(new Error(`LP Sugar call timeout after ${timeout}ms`)),
+              timeout,
+            ),
           )
 
           const poolsPromise = publicClient.readContract({
@@ -302,23 +307,8 @@ export class VelodromeFetcher {
         logger.warn(`[Velodrome] No Sugar Oracle configured for chain ${chainId}`)
         return priceMap
       }
-      
+
       logger.info(`[Velodrome] Using Sugar Oracle at ${sugarOracleAddress} for chain ${chainId}`)
-      
-      // Verify the Sugar Oracle contract exists and is callable
-      try {
-        const testCall = await publicClient.readContract({
-          address: sugarOracleAddress as Address,
-          abi: SUGAR_ORACLE_ABI,
-          functionName: 'getManyRatesWithConnectors',
-          args: [1, [WETH_ADDRESSES[chainId] || zeroAddress] as Address[]],
-        })
-        logger.debug(`[Velodrome] Sugar Oracle test call successful, contract is responsive`)
-      } catch (error) {
-        logger.error(`[Velodrome] Sugar Oracle at ${sugarOracleAddress} is not responding:`, error)
-        logger.error(`[Velodrome] This likely means the contract address is incorrect or the contract has changed`)
-        return priceMap
-      }
 
       const rateConnectors = chainId === 10 ? OPT_RATE_CONNECTORS : BASE_RATE_CONNECTORS
 
@@ -370,7 +360,7 @@ export class VelodromeFetcher {
       const parallelLimit = 5
       let successfulBatches = 0
       let failedBatches = 0
-      
+
       for (let i = 0; i < batchPromises.length; i += parallelLimit) {
         const parallelBatch = batchPromises.slice(i, i + parallelLimit)
         const results = await Promise.all(parallelBatch)
@@ -392,14 +382,18 @@ export class VelodromeFetcher {
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
       }
-      
+
       // Log aggregated results
       if (failedBatches > 0) {
-        logger.info(`[Velodrome] Chain ${chainId}: ${successfulBatches}/${batchPromises.length} batches succeeded (${failedBatches} timeouts)`)
-        
+        logger.info(
+          `[Velodrome] Chain ${chainId}: ${successfulBatches}/${batchPromises.length} batches succeeded (${failedBatches} timeouts)`,
+        )
+
         // If all batches failed, it's likely a systemic issue
         if (successfulBatches === 0) {
-          logger.error(`[Velodrome] All batches failed on chain ${chainId} - Sugar Oracle may be down or address is incorrect`)
+          logger.error(
+            `[Velodrome] All batches failed on chain ${chainId} - Sugar Oracle may be down or address is incorrect`,
+          )
           return priceMap
         }
       }
