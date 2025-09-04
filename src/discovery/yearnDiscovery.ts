@@ -134,6 +134,7 @@ export class YearnDiscovery {
               address: vault.address.toLowerCase(),
               chainId: this.chainId,
               source: 'yearn-vault',
+              isVault: true,
             });
             
             // Cache pricePerShare data for the vault
@@ -306,6 +307,7 @@ export class YearnDiscovery {
           address: vaultAddress.toLowerCase(),
           chainId: this.chainId,
           source: `yearn-${version}-vault`,
+          isVault: true,
         });
       }
 

@@ -6,7 +6,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     chainId: 1,
     curveFactoryAddress: '0xB9fC157394Af804a3578134A6585C0dc9cc990d4',
     curveRegistryAddress: '0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5',
-    curveApiUrl: 'https://api.curve.finance/api/getPools/ethereum/main',
+    curveApiUrl: 'https://api.curve.finance/api/getPools/all/ethereum',
     yearnRegistryAddress: '0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804',
     aaveV2LendingPool: '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9',
     aaveV3Pool: '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2',
@@ -53,7 +53,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Polygon
   137: {
     chainId: 137,
-    curveApiUrl: 'https://api.curve.finance/api/getPools/polygon/main',
+    curveApiUrl: 'https://api.curve.finance/api/getPools/all/polygon',
     yearnRegistryAddress: '0x32bF3dc86E278F17D6449f88A9d30385106319Dc',
     aaveV2LendingPool: '0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
@@ -70,7 +70,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Fantom
   250: {
     chainId: 250,
-    curveApiUrl: 'https://api.curve.finance/api/getPools/fantom/main',
+    curveApiUrl: 'https://api.curve.finance/api/getPools/all/fantom',
     yearnRegistryAddress: '0x727fe1759430df13655ddb0731dE0D0FDE929b04',
     extraTokens: [
       '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', // WFTM
@@ -95,7 +95,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Arbitrum
   42161: {
     chainId: 42161,
-    curveApiUrl: 'https://api.curve.finance/api/getPools/arbitrum/main',
+    curveApiUrl: 'https://api.curve.finance/api/getPools/all/arbitrum',
     curveFactoryAddress: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
     yearnRegistryAddress: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',

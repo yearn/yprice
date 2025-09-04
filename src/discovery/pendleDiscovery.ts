@@ -202,6 +202,7 @@ export class PendleDiscovery {
               chainId: this.chainId,
               symbol: asset.sy.symbol,
               source: 'pendle-sy',
+              isVault: true, // SY tokens are yield-bearing vault tokens
             });
             
             // Cache SY price if available
@@ -234,23 +235,43 @@ export class PendleDiscovery {
 
   private async discoverFromMarkets(apiUrl: string): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = [];
+    const baseUrl = apiUrl.split('?')[0];
+    const allMarkets: PendleMarket[] = [];
+    const limit = 100;
+    let skip = 0;
 
     try {
       const httpsAgent = new https.Agent({
         rejectUnauthorized: false // Temporarily disable SSL verification
       });
       
-      const response = await axios.get<PendleMarketsResponse>(apiUrl, {
-        timeout: 30000,
-        headers: { 
-          'User-Agent': 'yearn-pricing-service',
-          'Accept': 'application/json'
-        },
-        httpsAgent: httpsAgent
-      });
+      // Fetch all pages
+      while (true) {
+        const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${skip}&limit=${limit}`;
+        const response = await axios.get<PendleMarketsResponse>(paginatedUrl, {
+          timeout: 30000,
+          headers: { 
+            'User-Agent': 'yearn-pricing-service',
+            'Accept': 'application/json'
+          },
+          httpsAgent: httpsAgent
+        });
 
-      if (response.data?.results) {
-        for (const market of response.data.results) {
+        if (!response.data?.results || response.data.results.length === 0) {
+          break;
+        }
+
+        allMarkets.push(...response.data.results);
+
+        if (response.data.results.length < limit) {
+          break;
+        }
+
+        skip += limit;
+      }
+
+      if (allMarkets.length > 0) {
+        for (const market of allMarkets) {
           // Add market token itself
           if (market.address) {
             tokens.push({
@@ -305,6 +326,7 @@ export class PendleDiscovery {
               chainId: this.chainId,
               symbol: market.sy.symbol,
               source: 'pendle-sy',
+              isVault: true, // SY tokens are yield-bearing vault tokens
             });
             
             // Cache SY price if available
@@ -316,7 +338,7 @@ export class PendleDiscovery {
         }
       }
 
-      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle market tokens`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle market tokens from ${allMarkets.length} markets`);
     } catch (error: any) {
       logger.warn(`Pendle markets discovery failed for chain ${this.chainId}:`, error.message);
     }

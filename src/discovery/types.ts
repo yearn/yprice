@@ -5,6 +5,7 @@ export interface TokenInfo {
   name?: string;
   symbol?: string;
   decimals?: number;
+  isVault?: boolean;
 }
 
 export interface PoolInfo {

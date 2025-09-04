@@ -4,6 +4,7 @@ import { CurveDiscovery } from './curveDiscovery';
 import { CurveFactoriesDiscovery } from './curveFactories';
 import { VeloDiscovery } from './veloDiscovery';
 import { YearnDiscovery } from './yearnDiscovery';
+import { GenericVaultDiscovery } from './genericVaultDiscovery';
 import tokenListDiscovery from './tokenListDiscovery';
 import { GammaDiscovery } from './gammaDiscovery';
 import { PendleDiscovery } from './pendleDiscovery';
@@ -181,6 +182,7 @@ export class TokenDiscoveryService {
           )
         );
       }
+      
 
       // 4. Velodrome/Aerodrome pools
       if (config.veloSugarAddress || config.veloApiUrl) {
@@ -287,6 +289,16 @@ export class TokenDiscoveryService {
           new BalancerDiscovery(chainId).discoverTokens(),
           45000, // 45s for API
           'Balancer'
+        )
+      );
+      
+      // 12. Generic Vaults from DefLlama (API call)
+      sourceNames.push('Generic Vaults');
+      discoveryPromises.push(
+        withTimeout(
+          new GenericVaultDiscovery(chainId).discoverTokens(),
+          45000, // 45s for API
+          'Generic Vaults'
         )
       );
 
@@ -425,7 +437,8 @@ export class TokenDiscoveryService {
         name: token.name || 'Unknown Token',
         decimals: token.decimals || 18,
         chainId: chainId,
-        source: token.source, 
+        source: token.source,
+        isVault: token.isVault,
       });
     }
 

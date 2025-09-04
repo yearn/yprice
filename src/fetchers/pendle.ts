@@ -128,20 +128,37 @@ export class PendleFetcher {
     tokenAddresses: Set<string>,
     priceMap: Map<string, Price>
   ): Promise<void> {
-    try {
-      const response = await axios.get<PendleMarketsResponse>(url, {
-        timeout: 30000,
-        headers: { 
-          'User-Agent': 'yearn-pricing-service',
-          'Accept': 'application/json'
-        },
-      });
+    const baseUrl = url.split('?')[0];
+    const allMarkets: PendleMarket[] = [];
+    const limit = 100;
+    let skip = 0;
 
-      if (!response.data?.results) {
-        return;
+    try {
+      // Fetch all pages
+      while (true) {
+        const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${skip}&limit=${limit}`;
+        const response = await axios.get<PendleMarketsResponse>(paginatedUrl, {
+          timeout: 30000,
+          headers: { 
+            'User-Agent': 'yearn-pricing-service',
+            'Accept': 'application/json'
+          },
+        });
+
+        if (!response.data?.results || response.data.results.length === 0) {
+          break;
+        }
+
+        allMarkets.push(...response.data.results);
+
+        if (response.data.results.length < limit) {
+          break;
+        }
+
+        skip += limit;
       }
 
-      for (const market of response.data.results) {
+      for (const market of allMarkets) {
         // Market LP token price
         const marketAddress = market.address.toLowerCase();
         if (tokenAddresses.has(marketAddress) && market.price?.usd) {
