@@ -1,23 +1,23 @@
-import axios from 'axios';
-import https from 'https';
-import { TokenInfo } from './types';
-import { logger, discoveryPriceCache } from '../utils';
-import { zeroAddress } from 'viem';
+import https from 'node:https'
+import axios from 'axios'
+import { TokenInfo } from 'discovery/types'
+import { discoveryPriceCache, logger } from 'utils/index'
+import { zeroAddress } from 'viem'
 
 interface GammaHypervisor {
-  id: string;
-  pool: string;
-  token0: string;
-  token1: string;
-  tick: number;
-  totalSupply: string;
-  tvl0: string;
-  tvl1: string;
-  tvlUSD: string;
+  id: string
+  pool: string
+  token0: string
+  token1: string
+  tick: number
+  totalSupply: string
+  tvl0: string
+  tvl1: string
+  tvlUSD: string
 }
 
 interface GammaResponse {
-  [key: string]: GammaHypervisor;
+  [key: string]: GammaHypervisor
 }
 
 // Gamma API endpoints - same endpoint for all chains
@@ -27,33 +27,33 @@ const GAMMA_API_URLS: Record<number, string> = {
   137: 'https://wire2.gamma.xyz/hypervisors/allData',
   42161: 'https://wire2.gamma.xyz/hypervisors/allData',
   8453: 'https://wire2.gamma.xyz/hypervisors/allData',
-};
+}
 
 export class GammaDiscovery {
-  private chainId: number;
+  private chainId: number
 
   constructor(chainId: number) {
-    this.chainId = chainId;
+    this.chainId = chainId
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-    const apiUrl = GAMMA_API_URLS[this.chainId];
+    const tokens: TokenInfo[] = []
+    const apiUrl = GAMMA_API_URLS[this.chainId]
 
     if (!apiUrl) {
-      return tokens; // No Gamma on this chain
+      return tokens // No Gamma on this chain
     }
 
     try {
       const httpsAgent = new https.Agent({
-        rejectUnauthorized: false // Temporarily disable SSL verification
-      });
-      
+        rejectUnauthorized: false, // Temporarily disable SSL verification
+      })
+
       const response = await axios.get<GammaResponse>(apiUrl, {
         timeout: 30000,
         headers: { 'User-Agent': 'yearn-pricing-service' },
-        httpsAgent: httpsAgent
-      });
+        httpsAgent: httpsAgent,
+      })
 
       if (response.data) {
         for (const [address, hypervisor] of Object.entries(response.data)) {
@@ -62,21 +62,21 @@ export class GammaDiscovery {
             address: address.toLowerCase(),
             chainId: this.chainId,
             source: 'gamma-lp',
-          });
+          })
 
           // Cache price data for the LP token
-          const tvlUSD = parseFloat(hypervisor.tvlUSD || '0');
-          const totalSupply = parseFloat(hypervisor.totalSupply || '0');
-          
+          const tvlUSD = parseFloat(hypervisor.tvlUSD || '0')
+          const totalSupply = parseFloat(hypervisor.totalSupply || '0')
+
           if (tvlUSD > 0 && totalSupply > 0) {
-            const pricePerToken = tvlUSD / totalSupply;
-            const price = BigInt(Math.floor(pricePerToken * 1e6));
-            
+            const pricePerToken = tvlUSD / totalSupply
+            const price = BigInt(Math.floor(pricePerToken * 1e6))
+
             if (price > BigInt(0)) {
               discoveryPriceCache.set(this.chainId, address, price, 'gamma', {
                 tvlUSD: hypervisor.tvlUSD,
                 totalSupply: hypervisor.totalSupply,
-              });
+              })
             }
           }
 
@@ -86,7 +86,7 @@ export class GammaDiscovery {
               address: hypervisor.token0.toLowerCase(),
               chainId: this.chainId,
               source: 'gamma-token',
-            });
+            })
           }
 
           // Add token1
@@ -95,7 +95,7 @@ export class GammaDiscovery {
               address: hypervisor.token1.toLowerCase(),
               chainId: this.chainId,
               source: 'gamma-token',
-            });
+            })
           }
 
           // Also add the pool address if it exists
@@ -104,31 +104,31 @@ export class GammaDiscovery {
               address: hypervisor.pool.toLowerCase(),
               chainId: this.chainId,
               source: 'gamma-pool',
-            });
+            })
           }
         }
       }
 
-      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Gamma tokens`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Gamma tokens`)
     } catch (error: any) {
-      logger.warn(`Gamma discovery failed for chain ${this.chainId}:`, error.message);
+      logger.warn(`Gamma discovery failed for chain ${this.chainId}:`, error.message)
     }
 
-    return this.deduplicateTokens(tokens);
+    return this.deduplicateTokens(tokens)
   }
 
   private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>();
-    const unique: TokenInfo[] = [];
+    const seen = new Set<string>()
+    const unique: TokenInfo[] = []
 
     for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`;
+      const key = `${token.chainId}-${token.address.toLowerCase()}`
       if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(token);
+        seen.add(key)
+        unique.push(token)
       }
     }
 
-    return unique;
+    return unique
   }
 }

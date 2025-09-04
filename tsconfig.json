@@ -30,7 +30,16 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "allowUnusedLabels": false,
-    "allowUnreachableCode": false
+    "allowUnreachableCode": false,
+    "baseUrl": "./",
+    "paths": {
+      "models/*": ["src/models/*"],
+      "discovery/*": ["src/discovery/*"],
+      "fetchers/*": ["src/fetchers/*"],
+      "services/*": ["src/services/*"],
+      "storage/*": ["src/storage/*"],
+      "utils/*": ["src/utils/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests", "api"]

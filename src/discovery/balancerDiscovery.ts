@@ -1,8 +1,8 @@
-import axios from 'axios';
-import https from 'https';
-import { TokenInfo } from './types';
-import { logger } from '../utils';
-import { zeroAddress } from 'viem';
+import https from 'node:https'
+import axios from 'axios'
+import { TokenInfo } from 'discovery/types'
+import { logger } from 'utils/index'
+import { zeroAddress } from 'viem'
 
 // Balancer subgraph endpoints - Using dev endpoints to avoid rate limits
 const BALANCER_SUBGRAPHS: Record<number, string> = {
@@ -13,59 +13,59 @@ const BALANCER_SUBGRAPHS: Record<number, string> = {
   100: 'https://api.studio.thegraph.com/query/75376/balancer-gnosis-chain-v2/version/latest',
   8453: 'https://api.studio.thegraph.com/query/24660/balancer-base-v2/version/latest',
   43114: 'https://api.studio.thegraph.com/query/75376/balancer-avalanche-v2/version/latest',
-};
+}
 
 // Balancer API for more comprehensive data
-const BALANCER_API_URL = 'https://api.balancer.fi/pools/';
+const BALANCER_API_URL = 'https://api.balancer.fi/pools/'
 
 interface BalancerPool {
-  id: string;
-  address: string;
-  poolType: string;
-  symbol: string;
-  name: string;
+  id: string
+  address: string
+  poolType: string
+  symbol: string
+  name: string
   tokens: Array<{
-    address: string;
-    symbol: string;
-    name: string;
-    decimals: number;
-  }>;
+    address: string
+    symbol: string
+    name: string
+    decimals: number
+  }>
 }
 
 interface BalancerSubgraphResponse {
   data: {
-    pools: BalancerPool[];
-  };
+    pools: BalancerPool[]
+  }
 }
 
 export class BalancerDiscovery {
-  private chainId: number;
+  private chainId: number
 
   constructor(chainId: number) {
-    this.chainId = chainId;
+    this.chainId = chainId
   }
 
   async discoverTokens(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-    
-    // Try subgraph first
-    const subgraphTokens = await this.discoverFromSubgraph();
-    tokens.push(...subgraphTokens);
-    
-    // Try API as fallback/supplement
-    const apiTokens = await this.discoverFromAPI();
-    tokens.push(...apiTokens);
+    const tokens: TokenInfo[] = []
 
-    logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`);
-    return this.deduplicateTokens(tokens);
+    // Try subgraph first
+    const subgraphTokens = await this.discoverFromSubgraph()
+    tokens.push(...subgraphTokens)
+
+    // Try API as fallback/supplement
+    const apiTokens = await this.discoverFromAPI()
+    tokens.push(...apiTokens)
+
+    logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`)
+    return this.deduplicateTokens(tokens)
   }
 
   private async discoverFromSubgraph(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
-    const subgraphUrl = BALANCER_SUBGRAPHS[this.chainId];
-    
+    const tokens: TokenInfo[] = []
+    const subgraphUrl = BALANCER_SUBGRAPHS[this.chainId]
+
     if (!subgraphUrl) {
-      return tokens;
+      return tokens
     }
 
     try {
@@ -85,12 +85,12 @@ export class BalancerDiscovery {
             }
           }
         }
-      `;
+      `
 
       const httpsAgent = new https.Agent({
-        rejectUnauthorized: false // Temporarily disable SSL verification
-      });
-      
+        rejectUnauthorized: false, // Temporarily disable SSL verification
+      })
+
       const response = await axios.post<BalancerSubgraphResponse>(
         subgraphUrl,
         { query },
@@ -99,9 +99,9 @@ export class BalancerDiscovery {
           headers: {
             'Content-Type': 'application/json',
           },
-          httpsAgent: httpsAgent
-        }
-      );
+          httpsAgent: httpsAgent,
+        },
+      )
 
       if (response.data?.data?.pools) {
         for (const pool of response.data.data.pools) {
@@ -112,7 +112,7 @@ export class BalancerDiscovery {
             symbol: pool.symbol,
             name: pool.name,
             source: 'balancer-pool',
-          });
+          })
 
           // Add underlying tokens
           for (const token of pool.tokens || []) {
@@ -124,33 +124,41 @@ export class BalancerDiscovery {
                 name: token.name,
                 decimals: token.decimals,
                 source: 'balancer-token',
-              });
+              })
             }
           }
         }
       }
 
-      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer subgraph`);
+      logger.debug(
+        `Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer subgraph`,
+      )
     } catch (error: any) {
       // Handle rate limiting specifically
       if (error.response?.status === 429 || error.response?.data?.includes('Too many requests')) {
-        logger.warn(`Balancer subgraph rate limited for chain ${this.chainId} - this is expected and will retry later`);
+        logger.warn(
+          `Balancer subgraph rate limited for chain ${this.chainId} - this is expected and will retry later`,
+        )
       } else if (error.response?.data?.errors?.[0]?.message?.includes('deployment')) {
-        logger.debug(`Balancer subgraph deployment issue for chain ${this.chainId}: ${error.response.data.errors[0].message}`);
+        logger.debug(
+          `Balancer subgraph deployment issue for chain ${this.chainId}: ${error.response.data.errors[0].message}`,
+        )
       } else {
-        logger.warn(`Balancer subgraph discovery failed for chain ${this.chainId}:`, error.message);
+        logger.warn(`Balancer subgraph discovery failed for chain ${this.chainId}:`, error.message)
       }
-      
+
       if (error.response) {
-        logger.debug(`Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+        logger.debug(
+          `Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data).substring(0, 200)}`,
+        )
       }
     }
 
-    return tokens;
+    return tokens
   }
 
   private async discoverFromAPI(): Promise<TokenInfo[]> {
-    const tokens: TokenInfo[] = [];
+    const tokens: TokenInfo[] = []
 
     try {
       // Map chain IDs to Balancer network names
@@ -162,24 +170,24 @@ export class BalancerDiscovery {
         100: 'GNOSIS',
         8453: 'BASE',
         43114: 'AVALANCHE',
-      };
+      }
 
-      const network = networkMap[this.chainId];
+      const network = networkMap[this.chainId]
       if (!network) {
-        return tokens;
+        return tokens
       }
 
       const httpsAgent = new https.Agent({
-        rejectUnauthorized: false // Temporarily disable SSL verification
-      });
-      
+        rejectUnauthorized: false, // Temporarily disable SSL verification
+      })
+
       const response = await axios.get(`${BALANCER_API_URL}${this.chainId}`, {
         timeout: 30000,
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
-        httpsAgent: httpsAgent
-      });
+        httpsAgent: httpsAgent,
+      })
 
       if (response.data && Array.isArray(response.data)) {
         for (const pool of response.data) {
@@ -191,7 +199,7 @@ export class BalancerDiscovery {
               symbol: pool.symbol,
               name: pool.name,
               source: 'balancer-api-pool',
-            });
+            })
           }
 
           // Add pool tokens
@@ -203,33 +211,33 @@ export class BalancerDiscovery {
                 symbol: token.symbol,
                 name: token.name,
                 source: 'balancer-api-token',
-              });
+              })
             }
           }
         }
       }
 
-      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer API`);
+      logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} tokens from Balancer API`)
     } catch (error: any) {
       // API might not be available for all chains
-      logger.debug(`Balancer API discovery failed for chain ${this.chainId}:`, error.message);
+      logger.debug(`Balancer API discovery failed for chain ${this.chainId}:`, error.message)
     }
 
-    return tokens;
+    return tokens
   }
 
   private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>();
-    const unique: TokenInfo[] = [];
+    const seen = new Set<string>()
+    const unique: TokenInfo[] = []
 
     for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`;
+      const key = `${token.chainId}-${token.address.toLowerCase()}`
       if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(token);
+        seen.add(key)
+        unique.push(token)
       }
     }
 
-    return unique;
+    return unique
   }
 }

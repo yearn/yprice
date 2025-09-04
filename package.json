@@ -9,8 +9,10 @@
     "deploy": "vercel --prod",
     "test": "jest",
     "test:watch": "jest --watch",
-    "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format --write src/",
+    "check": "biome check src/"
   },
   "keywords": [
     "yearn",
@@ -31,6 +33,7 @@
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.2",
     "@types/jest": "^29.5.11",
     "@types/lodash": "^4.17.20",
     "@types/node": "^20.10.5",

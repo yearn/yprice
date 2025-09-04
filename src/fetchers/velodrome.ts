@@ -1,13 +1,13 @@
-import { parseAbi, zeroAddress, type Address } from 'viem';
-import { ERC20Token, Price } from '../models';
-import { logger, getPublicClient, batchReadContracts } from '../utils';
-import { DISCOVERY_CONFIGS } from '../discovery/config';
+import { DISCOVERY_CONFIGS } from 'discovery/config'
+import { ERC20Token, Price } from 'models/index'
+import { batchReadContracts, getPublicClient, logger } from 'utils/index'
+import { type Address, parseAbi, zeroAddress } from 'viem'
 
 // Sugar Oracle contract addresses
 const SUGAR_ORACLE_ADDRESSES: Record<number, string> = {
   10: '0xcA97e5653d775cA689BED5D0B4164b7656677011', // Optimism (Velodrome)
   8453: '0xB98fB4C9C99dE155cCbF5A14af0dBBAd96033D6f', // Base (Aerodrome)
-};
+}
 
 // Rate connectors for Optimism (used by Sugar Oracle)
 const OPT_RATE_CONNECTORS = [
@@ -31,7 +31,7 @@ const OPT_RATE_CONNECTORS = [
   '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', // USDT
   '0x0b2c639c533813f4aa9d7837caf62653d097ff85', // USDC.e
   '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // USDC
-];
+]
 
 // Rate connectors for Base (used by Sugar Oracle)
 const BASE_RATE_CONNECTORS = [
@@ -42,14 +42,14 @@ const BASE_RATE_CONNECTORS = [
   '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI
   '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22', // cbETH
   '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452', // wstETH
-];
+]
 
 // Sugar ABI - complex tuple needs to be defined as a proper ABI object for viem
 const SUGAR_ABI = [
   {
     inputs: [
       { name: 'limit', type: 'uint256' },
-      { name: 'offset', type: 'uint256' }
+      { name: 'offset', type: 'uint256' },
     ],
     name: 'all',
     outputs: [
@@ -79,72 +79,70 @@ const SUGAR_ABI = [
           { name: 'pool_fee', type: 'uint256' },
           { name: 'unstaked_fee', type: 'uint256' },
           { name: 'token0_fees', type: 'uint256' },
-          { name: 'token1_fees', type: 'uint256' }
+          { name: 'token1_fees', type: 'uint256' },
         ],
         name: '',
-        type: 'tuple[]'
-      }
+        type: 'tuple[]',
+      },
     ],
     stateMutability: 'view',
-    type: 'function'
-  }
-] as const;
+    type: 'function',
+  },
+] as const
 
 const SUGAR_ORACLE_ABI = parseAbi([
   'function getManyRatesWithConnectors(uint8 length, address[] connectors) view returns (uint256[])',
-]);
+])
 
-const ERC20_ABI = parseAbi([
-  'function decimals() view returns (uint8)',
-]);
+const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)'])
 
 interface SugarPoolData {
-  lp: string;
-  symbol: string;
-  decimals: number;
-  liquidity: bigint;
-  type: number;
-  tick: number;
-  sqrt_ratio: bigint;
-  token0: string;
-  reserve0: bigint;
-  staked0: bigint;
-  token1: string;
-  reserve1: bigint;
-  staked1: bigint;
-  gauge: string;
-  gauge_liquidity: bigint;
-  gauge_alive: boolean;
-  fee: string;
-  bribe: string;
-  factory: string;
-  emissions: bigint;
-  emissions_token: string;
-  pool_fee: bigint;
-  unstaked_fee: bigint;
-  token0_fees: bigint;
-  token1_fees: bigint;
+  lp: string
+  symbol: string
+  decimals: number
+  liquidity: bigint
+  type: number
+  tick: number
+  sqrt_ratio: bigint
+  token0: string
+  reserve0: bigint
+  staked0: bigint
+  token1: string
+  reserve1: bigint
+  staked1: bigint
+  gauge: string
+  gauge_liquidity: bigint
+  gauge_alive: boolean
+  fee: string
+  bribe: string
+  factory: string
+  emissions: bigint
+  emissions_token: string
+  pool_fee: bigint
+  unstaked_fee: bigint
+  token0_fees: bigint
+  token1_fees: bigint
 }
 
 export class VelodromeFetcher {
   async fetchPrices(
     chainId: number,
     _tokens: ERC20Token[],
-    existingPrices: Map<string, Price>
+    existingPrices: Map<string, Price>,
   ): Promise<Map<string, Price>> {
-    const priceMap = new Map<string, Price>();
-    
+    const priceMap = new Map<string, Price>()
+
     // Only support Optimism and Base
     if (chainId !== 10 && chainId !== 8453) {
-      return priceMap;
+      return priceMap
     }
 
-    const publicClient = getPublicClient(chainId);
-    const config = DISCOVERY_CONFIGS[chainId];
-    
+    const publicClient = getPublicClient(chainId)
+    const config = DISCOVERY_CONFIGS[chainId]
+
     if (!config?.veloSugarAddress) {
-      logger.warn(`[Velodrome] No Sugar address configured for chain ${chainId}`);
-      return priceMap;
+      logger.warn(`[Velodrome] No Sugar address configured for chain ${chainId}`)
+      return priceMap
     }
 
     try {
@@ -152,180 +150,197 @@ export class VelodromeFetcher {
       const chainConfig = {
         10: { batchSize: 25, maxBatches: 39, timeout: 15000 }, // Optimism
         8453: { batchSize: 10, maxBatches: 20, timeout: 30000 }, // Base
-      };
-      
-      const { batchSize, maxBatches, timeout } = chainConfig[chainId] || { batchSize: 25, maxBatches: 30, timeout: 20000 };
-      const allPools: SugarPoolData[] = [];
-      
-      logger.debug(`[Velodrome] Starting to fetch pools for chain ${chainId} (batch size: ${batchSize}, max: ${maxBatches})`);
-      
+      }
+
+      const { batchSize, maxBatches, timeout } = chainConfig[chainId] || {
+        batchSize: 25,
+        maxBatches: 30,
+        timeout: 20000,
+      }
+      const allPools: SugarPoolData[] = []
+
+      logger.debug(
+        `[Velodrome] Starting to fetch pools for chain ${chainId} (batch size: ${batchSize}, max: ${maxBatches})`,
+      )
+
       for (let i = 0; i < maxBatches; i++) {
         try {
-          const offset = i * batchSize;
-          
+          const offset = i * batchSize
+
           // Add timeout to prevent hanging
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error(`Sugar call timeout after ${timeout}ms`)), timeout)
-          );
-          
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Sugar call timeout after ${timeout}ms`)), timeout),
+          )
+
           const poolsPromise = publicClient.readContract({
             address: config.veloSugarAddress as Address,
             abi: SUGAR_ABI,
             functionName: 'all',
             args: [BigInt(batchSize), BigInt(offset)],
-          });
-          
-          const pools = await Promise.race([poolsPromise, timeoutPromise]) as SugarPoolData[];
-          
+          })
+
+          const pools = (await Promise.race([poolsPromise, timeoutPromise])) as SugarPoolData[]
+
           if (!pools || pools.length === 0) {
-            logger.debug(`[Velodrome] Batch ${i}: No more pools found`);
-            break;
+            logger.debug(`[Velodrome] Batch ${i}: No more pools found`)
+            break
           }
-          
-          allPools.push(...pools);
-          logger.debug(`[Velodrome] Batch ${i}: Fetched ${pools.length} pools (total: ${allPools.length})`);
-          
+
+          allPools.push(...pools)
+          logger.debug(
+            `[Velodrome] Batch ${i}: Fetched ${pools.length} pools (total: ${allPools.length})`,
+          )
+
           if (pools.length < batchSize) {
-            break;
+            break
           }
         } catch (error: any) {
-          const errorMsg = error.message || error;
-          
+          const errorMsg = error.message || error
+
           if (i === 0) {
-            logger.error('[Velodrome] Failed to fetch first batch from Sugar contract:', errorMsg);
-            return priceMap;
+            logger.error('[Velodrome] Failed to fetch first batch from Sugar contract:', errorMsg)
+            return priceMap
           }
-          
+
           // For timeout errors, just warn and continue
           if (errorMsg.includes('timeout')) {
-            logger.warn(`[Velodrome] Batch ${i} timed out on chain ${chainId}, continuing...`);
-            
+            logger.warn(`[Velodrome] Batch ${i} timed out on chain ${chainId}, continuing...`)
+
             // For Base, stop if we hit too many timeouts
             if (chainId === 8453 && i > 5) {
-              logger.warn(`[Velodrome] Multiple timeouts on Base, stopping to prevent blocking`);
-              break;
+              logger.warn(`[Velodrome] Multiple timeouts on Base, stopping to prevent blocking`)
+              break
             }
-            continue;
+            continue
           }
-          
-          logger.error(`[Velodrome] Batch ${i} failed:`, errorMsg);
-          break;
+
+          logger.error(`[Velodrome] Batch ${i} failed:`, errorMsg)
+          break
         }
       }
 
       if (allPools.length === 0) {
-        logger.warn('[Velodrome] No pools found');
-        return priceMap;
+        logger.warn('[Velodrome] No pools found')
+        return priceMap
       }
 
-      logger.debug(`[Velodrome] Found ${allPools.length} pools total`);
+      logger.debug(`[Velodrome] Found ${allPools.length} pools total`)
 
       // Collect unique tokens from pools
-      const uniqueTokens = new Set<string>();
-      const lpTokens = new Set<string>();
+      const uniqueTokens = new Set<string>()
+      const lpTokens = new Set<string>()
       for (const pool of allPools) {
-        lpTokens.add(pool.lp.toLowerCase());
+        lpTokens.add(pool.lp.toLowerCase())
         if (pool.token0 && pool.token0 !== zeroAddress) {
-          uniqueTokens.add(pool.token0.toLowerCase());
+          uniqueTokens.add(pool.token0.toLowerCase())
         }
         if (pool.token1 && pool.token1 !== zeroAddress) {
-          uniqueTokens.add(pool.token1.toLowerCase());
+          uniqueTokens.add(pool.token1.toLowerCase())
         }
       }
-      
-      logger.debug(`[Velodrome] Found ${lpTokens.size} LP tokens and ${uniqueTokens.size} unique component tokens`)
+
+      logger.debug(
+        `[Velodrome] Found ${lpTokens.size} LP tokens and ${uniqueTokens.size} unique component tokens`,
+      )
 
       // Get prices from Sugar Oracle
-      const tokenAddresses = Array.from(uniqueTokens);
-      
+      const tokenAddresses = Array.from(uniqueTokens)
+
       // Sugar Oracle expects uint8 for length, so we need to limit to 255 tokens
       // Use smaller batches for faster responses and better reliability
-      const maxTokensPerCall = 50; // Smaller batches = faster responses
-      const tokenBatches = [];
+      const maxTokensPerCall = 50 // Smaller batches = faster responses
+      const tokenBatches = []
       for (let i = 0; i < tokenAddresses.length; i += maxTokensPerCall) {
-        tokenBatches.push(tokenAddresses.slice(i, i + maxTokensPerCall));
+        tokenBatches.push(tokenAddresses.slice(i, i + maxTokensPerCall))
       }
-      
-      logger.debug(`[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches of up to ${maxTokensPerCall} tokens)`);
-      
-      const allTokenPrices = new Map<string, bigint>();
-      
+
+      logger.debug(
+        `[Velodrome] Fetching prices for ${tokenAddresses.length} tokens from Sugar Oracle (${tokenBatches.length} batches of up to ${maxTokensPerCall} tokens)`,
+      )
+
+      const allTokenPrices = new Map<string, bigint>()
+
       // Get the appropriate Sugar Oracle address and connectors for the chain
-      const sugarOracleAddress = SUGAR_ORACLE_ADDRESSES[chainId];
+      const sugarOracleAddress = SUGAR_ORACLE_ADDRESSES[chainId]
       if (!sugarOracleAddress) {
-        logger.warn(`[Velodrome] No Sugar Oracle configured for chain ${chainId}`);
-        return priceMap;
+        logger.warn(`[Velodrome] No Sugar Oracle configured for chain ${chainId}`)
+        return priceMap
       }
-      
-      const rateConnectors = chainId === 10 ? OPT_RATE_CONNECTORS : BASE_RATE_CONNECTORS;
-      
+
+      const rateConnectors = chainId === 10 ? OPT_RATE_CONNECTORS : BASE_RATE_CONNECTORS
+
       // Process batches in parallel for better performance
       const batchPromises = tokenBatches.map(async (batch, batchIndex) => {
-        const connectors = [...batch, ...rateConnectors].map(addr => addr as Address);
-        
+        const connectors = [...batch, ...rateConnectors].map((addr) => addr as Address)
+
         try {
-          logger.debug(`[Velodrome] Starting batch ${batchIndex + 1}/${tokenBatches.length} with ${batch.length} tokens...`);
-          
+          logger.debug(
+            `[Velodrome] Starting batch ${batchIndex + 1}/${tokenBatches.length} with ${batch.length} tokens...`,
+          )
+
           // Extended timeout for Sugar Oracle calls (30s to be safe)
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error(`Sugar Oracle timeout after 30s (batch ${batchIndex + 1})`)), 30000)
-          );
-          
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Sugar Oracle timeout after 30s (batch ${batchIndex + 1})`)),
+              30000,
+            ),
+          )
+
           const oraclePromise = publicClient.readContract({
             address: sugarOracleAddress as Address,
             abi: SUGAR_ORACLE_ABI,
             functionName: 'getManyRatesWithConnectors',
             args: [batch.length, connectors],
-          });
-          
-          const tokenPrices = await Promise.race([oraclePromise, timeoutPromise]) as bigint[];
-          
+          })
+
+          const tokenPrices = (await Promise.race([oraclePromise, timeoutPromise])) as bigint[]
+
           // Map prices to addresses
-          const batchResults = new Map<string, bigint>();
+          const batchResults = new Map<string, bigint>()
           for (let i = 0; i < batch.length; i++) {
-            const address = batch[i];
-            const price = tokenPrices[i];
+            const address = batch[i]
+            const price = tokenPrices[i]
             if (address && price !== undefined) {
-              batchResults.set(address, price);
+              batchResults.set(address, price)
             }
           }
-          
-          logger.debug(`[Velodrome] Batch ${batchIndex + 1} completed: ${batchResults.size} prices`);
-          return batchResults;
+
+          logger.debug(`[Velodrome] Batch ${batchIndex + 1} completed: ${batchResults.size} prices`)
+          return batchResults
         } catch (error: any) {
-          logger.warn(`[Velodrome] Batch ${batchIndex + 1} failed: ${error.message || error}`);
-          return new Map<string, bigint>();
+          logger.warn(`[Velodrome] Batch ${batchIndex + 1} failed: ${error.message || error}`)
+          return new Map<string, bigint>()
         }
-      });
-      
+      })
+
       // Process up to 5 batches in parallel
-      const parallelLimit = 5;
+      const parallelLimit = 5
       for (let i = 0; i < batchPromises.length; i += parallelLimit) {
-        const parallelBatch = batchPromises.slice(i, i + parallelLimit);
-        const results = await Promise.all(parallelBatch);
-        
+        const parallelBatch = batchPromises.slice(i, i + parallelLimit)
+        const results = await Promise.all(parallelBatch)
+
         // Merge results
-        results.forEach(batchResult => {
+        results.forEach((batchResult) => {
           batchResult.forEach((price, address) => {
-            allTokenPrices.set(address, price);
-          });
-        });
-        
+            allTokenPrices.set(address, price)
+          })
+        })
+
         // Small delay between parallel groups to avoid overwhelming the RPC
         if (i + parallelLimit < batchPromises.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100))
         }
       }
-      
-      logger.debug(`[Velodrome] Sugar Oracle returned ${allTokenPrices.size} total prices`);
+
+      logger.debug(`[Velodrome] Sugar Oracle returned ${allTokenPrices.size} total prices`)
 
       // Create price map for tokens
-      const tokenPriceMap = new Map<string, bigint>();
-      let validPriceCount = 0;
+      const tokenPriceMap = new Map<string, bigint>()
+      let validPriceCount = 0
       for (const [address, price] of allTokenPrices) {
         if (price !== undefined && price > BigInt(0)) {
-          tokenPriceMap.set(address, price);
-          validPriceCount++;
+          tokenPriceMap.set(address, price)
+          validPriceCount++
         }
       }
       logger.debug(`[Velodrome] ${validPriceCount} tokens have valid prices from Oracle`)
@@ -334,115 +349,120 @@ export class VelodromeFetcher {
       const usdcAddresses = {
         10: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // Optimism
         8453: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // Base
-      };
-      const usdcAddress = usdcAddresses[chainId];
+      }
+      const usdcAddress = usdcAddresses[chainId]
       if (usdcAddress) {
-        const usdcPrice = tokenPriceMap.get(usdcAddress);
+        const usdcPrice = tokenPriceMap.get(usdcAddress)
         if (!usdcPrice || usdcPrice === BigInt(0)) {
-          tokenPriceMap.set(usdcAddress, BigInt(10) ** BigInt(18)); // $1 in 18 decimals
+          tokenPriceMap.set(usdcAddress, BigInt(10) ** BigInt(18)) // $1 in 18 decimals
         }
       }
 
       // CRITICAL OPTIMIZATION: Use multicall to fetch all decimals at once
-      logger.debug(`[Velodrome] Fetching decimals for ${uniqueTokens.size} tokens using multicall`);
-      
-      const decimalsContracts = Array.from(uniqueTokens).map(address => ({
+      logger.debug(`[Velodrome] Fetching decimals for ${uniqueTokens.size} tokens using multicall`)
+
+      const decimalsContracts = Array.from(uniqueTokens).map((address) => ({
         address: address as Address,
         abi: ERC20_ABI,
         functionName: 'decimals',
         args: [],
-      }));
+      }))
 
       // Batch the decimals calls (viem will use multicall automatically)
-      const decimalsResults = await batchReadContracts<number>(chainId, decimalsContracts);
-      
-      const tokenDecimals = new Map<string, number>();
-      let decimalsFetched = 0;
-      
+      const decimalsResults = await batchReadContracts<number>(chainId, decimalsContracts)
+
+      const tokenDecimals = new Map<string, number>()
+      let decimalsFetched = 0
+
       Array.from(uniqueTokens).forEach((address, index) => {
-        const result = decimalsResults[index];
+        const result = decimalsResults[index]
         if (result && result.status === 'success' && result.result !== undefined) {
-          tokenDecimals.set(address, Number(result.result));
-          decimalsFetched++;
+          tokenDecimals.set(address, Number(result.result))
+          decimalsFetched++
         } else {
-          tokenDecimals.set(address, 18); // Default to 18
+          tokenDecimals.set(address, 18) // Default to 18
         }
-      });
-      
-      logger.debug(`[Velodrome] Fetched decimals for ${decimalsFetched}/${uniqueTokens.size} tokens via multicall`)
+      })
+
+      logger.debug(
+        `[Velodrome] Fetched decimals for ${decimalsFetched}/${uniqueTokens.size} tokens via multicall`,
+      )
 
       // Calculate LP token prices
-      let lpPricesCalculated = 0;
-      let lpSkippedNoPrice = 0;
-      let lpSkippedNoLiquidity = 0;
-      
+      let lpPricesCalculated = 0
+      let lpSkippedNoPrice = 0
+      let lpSkippedNoLiquidity = 0
+
       for (const pool of allPools) {
-        const token0Price = tokenPriceMap.get(pool.token0.toLowerCase()) || BigInt(0);
-        const token1Price = tokenPriceMap.get(pool.token1.toLowerCase()) || BigInt(0);
-        
+        const token0Price = tokenPriceMap.get(pool.token0.toLowerCase()) || BigInt(0)
+        const token1Price = tokenPriceMap.get(pool.token1.toLowerCase()) || BigInt(0)
+
         if (token0Price === BigInt(0) || token1Price === BigInt(0)) {
-          lpSkippedNoPrice++;
-          continue;
+          lpSkippedNoPrice++
+          continue
         }
 
-        const token0Decimals = tokenDecimals.get(pool.token0.toLowerCase()) || 18;
-        const token1Decimals = tokenDecimals.get(pool.token1.toLowerCase()) || 18;
+        const token0Decimals = tokenDecimals.get(pool.token0.toLowerCase()) || 18
+        const token1Decimals = tokenDecimals.get(pool.token1.toLowerCase()) || 18
 
         // Calculate value in pool
         // Value = (token0_price * reserve0 / 10^token0_decimals) + (token1_price * reserve1 / 10^token1_decimals)
-        const token0Divisor = BigInt(10) ** BigInt(token0Decimals);
-        const token1Divisor = BigInt(10) ** BigInt(token1Decimals);
-        const token0Value = token0Divisor > 0 ? (token0Price * pool.reserve0) / token0Divisor : BigInt(0);
-        const token1Value = token1Divisor > 0 ? (token1Price * pool.reserve1) / token1Divisor : BigInt(0);
-        const totalValue = token0Value + token1Value;
+        const token0Divisor = BigInt(10) ** BigInt(token0Decimals)
+        const token1Divisor = BigInt(10) ** BigInt(token1Decimals)
+        const token0Value =
+          token0Divisor > 0 ? (token0Price * pool.reserve0) / token0Divisor : BigInt(0)
+        const token1Value =
+          token1Divisor > 0 ? (token1Price * pool.reserve1) / token1Divisor : BigInt(0)
+        const totalValue = token0Value + token1Value
 
         // Calculate LP price = total_value / liquidity * 10^6 (for 6 decimal price format)
         if (pool.liquidity > BigInt(0)) {
           // LP has 18 decimals, we want price in 6 decimals
           // price = totalValue * 10^6 * 10^18 / liquidity / 10^18 = totalValue * 10^6 / liquidity
-          const lpPrice = (totalValue * BigInt(10 ** 6) * BigInt(10 ** 18)) / pool.liquidity / BigInt(10 ** 18);
-          
+          const lpPrice =
+            (totalValue * BigInt(10 ** 6) * BigInt(10 ** 18)) / pool.liquidity / BigInt(10 ** 18)
+
           if (lpPrice > BigInt(0)) {
             priceMap.set(pool.lp.toLowerCase(), {
               address: pool.lp.toLowerCase(),
               price: lpPrice,
               source: 'velodrome',
-            });
-            lpPricesCalculated++;
+            })
+            lpPricesCalculated++
           }
         } else {
-          lpSkippedNoLiquidity++;
+          lpSkippedNoLiquidity++
         }
 
         // Also add prices for component tokens if we don't have them yet
         if (!existingPrices.has(pool.token0.toLowerCase()) && token0Price > BigInt(0)) {
-          const price0 = (token0Price * BigInt(10 ** 6)) / BigInt(10 ** 18);
+          const price0 = (token0Price * BigInt(10 ** 6)) / BigInt(10 ** 18)
           priceMap.set(pool.token0.toLowerCase(), {
             address: pool.token0.toLowerCase(),
             price: price0,
             source: 'velodrome-oracle',
-          });
+          })
         }
 
         if (!existingPrices.has(pool.token1.toLowerCase()) && token1Price > BigInt(0)) {
-          const price1 = (token1Price * BigInt(10 ** 6)) / BigInt(10 ** 18);
+          const price1 = (token1Price * BigInt(10 ** 6)) / BigInt(10 ** 18)
           priceMap.set(pool.token1.toLowerCase(), {
             address: pool.token1.toLowerCase(),
             price: price1,
             source: 'velodrome-oracle',
-          });
+          })
         }
       }
 
-      logger.debug(`[Velodrome] Summary:`);
-      logger.debug(`  - LP prices calculated: ${lpPricesCalculated}`);
-      logger.debug(`  - LP skipped (no component price): ${lpSkippedNoPrice}`);
-      logger.debug(`  - LP skipped (no liquidity): ${lpSkippedNoLiquidity}`);
-      logger.debug(`  - Total prices returned: ${priceMap.size}`);
+      logger.debug(`[Velodrome] Summary:`)
+      logger.debug(`  - LP prices calculated: ${lpPricesCalculated}`)
+      logger.debug(`  - LP skipped (no component price): ${lpSkippedNoPrice}`)
+      logger.debug(`  - LP skipped (no liquidity): ${lpSkippedNoLiquidity}`)
+      logger.debug(`  - Total prices returned: ${priceMap.size}`)
     } catch (error) {
-      logger.error(`Velodrome fetcher failed for chain ${chainId}:`, error);
+      logger.error(`Velodrome fetcher failed for chain ${chainId}:`, error)
     }
 
-    return priceMap;
+    return priceMap
   }
 }

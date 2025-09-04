@@ -1,14 +1,5 @@
-import { createPublicClient, http, PublicClient, Chain } from 'viem';
-import { 
-  mainnet, 
-  optimism, 
-  gnosis, 
-  polygon, 
-  fantom, 
-  base, 
-  arbitrum 
-} from 'viem/chains';
-import { defineChain } from 'viem';
+import { Chain, createPublicClient, defineChain, http, PublicClient } from 'viem'
+import { arbitrum, base, fantom, gnosis, mainnet, optimism, polygon } from 'viem/chains'
 
 // Define custom chains
 const sonic = defineChain({
@@ -30,7 +21,7 @@ const sonic = defineChain({
       address: '0xca11bde05977b3631167028862be2a173976ca11',
     },
   },
-});
+})
 
 const katana = defineChain({
   id: 747474,
@@ -51,7 +42,7 @@ const katana = defineChain({
       address: '0xca11bde05977b3631167028862be2a173976ca11',
     },
   },
-});
+})
 
 // Chain mappings
 const chains: Record<number, Chain> = {
@@ -64,10 +55,10 @@ const chains: Record<number, Chain> = {
   42161: arbitrum,
   747474: katana,
   8453: base,
-};
+}
 
 // Client cache
-const clients = new Map<number, PublicClient>();
+const clients = new Map<number, PublicClient>()
 
 /**
  * Get or create a public client for the specified chain
@@ -75,15 +66,15 @@ const clients = new Map<number, PublicClient>();
  */
 export function getPublicClient(chainId: number): PublicClient {
   if (!clients.has(chainId)) {
-    const rpcUrl = process.env[`RPC_URI_FOR_${chainId}`];
-    
+    const rpcUrl = process.env[`RPC_URI_FOR_${chainId}`]
+
     if (!rpcUrl) {
-      throw new Error(`No RPC URL configured for chain ${chainId}`);
+      throw new Error(`No RPC URL configured for chain ${chainId}`)
     }
 
-    const chain = chains[chainId];
+    const chain = chains[chainId]
     if (!chain) {
-      throw new Error(`Chain ${chainId} not supported`);
+      throw new Error(`Chain ${chainId} not supported`)
     }
 
     const client = createPublicClient({
@@ -95,12 +86,12 @@ export function getPublicClient(chainId: number): PublicClient {
           wait: 0, // Send immediately
         },
       },
-    });
+    })
 
-    clients.set(chainId, client);
+    clients.set(chainId, client)
   }
 
-  return clients.get(chainId)!;
+  return clients.get(chainId)!
 }
 
 /**
@@ -108,7 +99,7 @@ export function getPublicClient(chainId: number): PublicClient {
  * Useful for testing or reinitializing with new RPC URLs
  */
 export function clearClients(): void {
-  clients.clear();
+  clients.clear()
 }
 
 /**
@@ -118,22 +109,22 @@ export function clearClients(): void {
 export async function batchReadContracts<T = any>(
   chainId: number,
   contracts: Array<{
-    address: `0x${string}`;
-    abi: any;
-    functionName: string;
-    args?: any[];
-  }>
+    address: `0x${string}`
+    abi: any
+    functionName: string
+    args?: any[]
+  }>,
 ): Promise<Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>> {
-  const client = getPublicClient(chainId);
-  
+  const client = getPublicClient(chainId)
+
   // Use multicall with allowFailure to handle tokens that might not have certain methods
   const results = await client.multicall({
-    contracts: contracts.map(c => ({
+    contracts: contracts.map((c) => ({
       ...c,
       args: c.args || [],
     })),
     allowFailure: true,
-  });
+  })
 
-  return results as Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>;
+  return results as Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>
 }

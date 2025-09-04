@@ -1,8 +1,9 @@
-import { TokenInfo } from './types';
+import { TokenInfo } from 'discovery/types'
 
 // Core tokens that should always be included for pricing
 export const CORE_TOKENS: Record<number, TokenInfo[]> = {
-  1: [ // Ethereum
+  1: [
+    // Ethereum
     {
       chainId: 1,
       address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
@@ -52,7 +53,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  10: [ // Optimism
+  10: [
+    // Optimism
     {
       chainId: 10,
       address: '0x4200000000000000000000000000000000000006',
@@ -86,7 +88,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  137: [ // Polygon
+  137: [
+    // Polygon
     {
       chainId: 137,
       address: '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
@@ -128,7 +131,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  250: [ // Fantom
+  250: [
+    // Fantom
     {
       chainId: 250,
       address: '0x21be370d5312f44cb42ce377bc9b8a0cef1a4c83',
@@ -170,7 +174,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  42161: [ // Arbitrum
+  42161: [
+    // Arbitrum
     {
       chainId: 42161,
       address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
@@ -212,7 +217,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  100: [ // xDai/Gnosis
+  100: [
+    // xDai/Gnosis
     {
       chainId: 100,
       address: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d',
@@ -246,7 +252,8 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-  8453: [ // Base
+  8453: [
+    // Base
     {
       chainId: 8453,
       address: '0x4200000000000000000000000000000000000006',
@@ -272,16 +279,12 @@ export const CORE_TOKENS: Record<number, TokenInfo[]> = {
       source: 'core',
     },
   ],
-};
+}
 
 export function getCoreTokensForChain(chainId: number): TokenInfo[] {
-  return CORE_TOKENS[chainId] || [];
+  return CORE_TOKENS[chainId] || []
 }
 
 export function getAllCoreTokens(): TokenInfo[] {
-  const allTokens: TokenInfo[] = [];
-  for (const tokens of Object.values(CORE_TOKENS)) {
-    allTokens.push(...tokens);
-  }
-  return allTokens;
+  return Object.values(CORE_TOKENS).flat()
 }

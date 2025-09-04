@@ -1,4 +1,4 @@
-import { DiscoveryConfig } from './types';
+import { DiscoveryConfig } from 'discovery/types'
 
 export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Ethereum Mainnet
@@ -22,12 +22,12 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', // AAVE
       '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', // UNI
       '0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F', // SNX
-    ]
+    ],
   },
   // Optimism
   10: {
     chainId: 10,
-    veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address 
+    veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     extraTokens: [
@@ -37,7 +37,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', // USDT
       '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', // DAI
       '0x4200000000000000000000000000000000000042', // OP
-    ]
+    ],
   },
   // Gnosis
   100: {
@@ -48,7 +48,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1', // WETH
       '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', // USDC
       '0x4ECaBa5870353805a9F068101A40E0f32ed605C6', // USDT
-    ]
+    ],
   },
   // Polygon
   137: {
@@ -65,7 +65,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', // USDT
       '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', // DAI
       '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', // WBTC
-    ]
+    ],
   },
   // Fantom
   250: {
@@ -78,19 +78,19 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x04068DA6C83AFCFA0e13ba15A6696662335D5B75', // USDC
       '0x049d68029688eAbF473097a2fC38ef61633A3C7A', // fUSDT
       '0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E', // DAI
-    ]
+    ],
   },
   // Base
   8453: {
     chainId: 8453,
-    veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address 
+    veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
       '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
       '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA', // USDbC
       '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', // DAI
-    ]
+    ],
   },
   // Arbitrum
   42161: {
@@ -107,7 +107,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', // DAI
       '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', // WBTC
       '0x912CE59144191C1204E64559FE8253a0e49E6548', // ARB
-    ]
+    ],
   },
   // BSC
   56: {
@@ -119,7 +119,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x55d398326f99059fF775485246999027B3197955', // USDT
       '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', // DAI
       '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', // ETH
-    ]
+    ],
   },
   // Avalanche C-Chain
   43114: {
@@ -131,20 +131,20 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70', // DAI
       '0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB', // WETH.e
       '0x50b7545627a5162F82A992c33b87aDc75187B218', // WBTC.e
-    ]
+    ],
   },
   // Sonic (formerly Fantom Sonic)
   146: {
     chainId: 146,
     extraTokens: [
       // Add native and common tokens when available
-    ]
+    ],
   },
   // Katana
   747474: {
     chainId: 747474,
     extraTokens: [
       // Add native and common tokens when available
-    ]
+    ],
   },
-};
+}
