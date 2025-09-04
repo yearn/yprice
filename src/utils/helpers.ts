@@ -1,10 +1,10 @@
 import lodash from 'lodash'
+import { getAddress } from 'viem'
 
 const { chunk } = lodash
 
 export const toChecksumAddress = (address: string): string => {
   try {
-    const { getAddress } = require('ethers')
     return getAddress(address)
   } catch {
     const addr = address.toLowerCase().replace('0x', '')

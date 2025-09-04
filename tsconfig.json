@@ -31,14 +31,14 @@
     "noUncheckedIndexedAccess": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
-    "baseUrl": "./",
+    "baseUrl": "./src",
     "paths": {
-      "models/*": ["src/models/*"],
-      "discovery/*": ["src/discovery/*"],
-      "fetchers/*": ["src/fetchers/*"],
-      "services/*": ["src/services/*"],
-      "storage/*": ["src/storage/*"],
-      "utils/*": ["src/utils/*"]
+      "models/*": ["models/*"],
+      "discovery/*": ["discovery/*"],
+      "fetchers/*": ["fetchers/*"],
+      "services/*": ["services/*"],
+      "storage/*": ["storage/*"],
+      "utils/*": ["utils/*"]
     }
   },
   "include": ["src/**/*"],

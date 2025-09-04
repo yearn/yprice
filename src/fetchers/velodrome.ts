@@ -1,5 +1,5 @@
 import { DISCOVERY_CONFIGS } from 'discovery/config'
-import { ERC20Token, Price, WETH_ADDRESSES } from 'models/index'
+import { ERC20Token, Price } from 'models/index'
 import { batchReadContracts, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 

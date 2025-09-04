@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { initializeStorage, StorageWrapper, getStorage, StorageType } from '../src/storage/index';
-import { logger } from '../src/utils';
+import { initializeStorage, StorageWrapper, getStorage, StorageType } from '../dist/storage/index';
+import { logger } from '../dist/utils';
 
 // Initialize storage once when the function loads
 let storageInitialized = false;
