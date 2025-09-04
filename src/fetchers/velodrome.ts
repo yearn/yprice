@@ -1,11 +1,11 @@
 import { DISCOVERY_CONFIGS } from 'discovery/config'
-import { ERC20Token, Price } from 'models/index'
+import { ERC20Token, Price, WETH_ADDRESSES } from 'models/index'
 import { batchReadContracts, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 // Sugar Oracle contract addresses
 const SUGAR_ORACLE_ADDRESSES: Record<number, string> = {
-  10: '0xcA97e5653d775cA689BED5D0B4164b7656677011', // Optimism (Velodrome)
+  10: '0x395942C2049604a314d39F370Dfb8D87AAC89e16', // Optimism (Velodrome) - Updated Prices oracle
   8453: '0xB98fB4C9C99dE155cCbF5A14af0dBBAd96033D6f', // Base (Aerodrome)
 }
 
@@ -80,6 +80,9 @@ const SUGAR_ABI = [
           { name: 'unstaked_fee', type: 'uint256' },
           { name: 'token0_fees', type: 'uint256' },
           { name: 'token1_fees', type: 'uint256' },
+          { name: 'nfpm', type: 'address' },
+          { name: 'alm', type: 'address' },
+          { name: 'root', type: 'address' },
         ],
         name: '',
         type: 'tuple[]',
@@ -122,10 +125,40 @@ interface SugarPoolData {
   unstaked_fee: bigint
   token0_fees: bigint
   token1_fees: bigint
+  nfpm: string
+  alm: string
+  root: string
 }
 
 export class VelodromeFetcher {
+  private fetchingInProgress = new Map<number, Promise<Map<string, Price>>>()
+  
   async fetchPrices(
+    chainId: number,
+    _tokens: ERC20Token[],
+    existingPrices: Map<string, Price>,
+  ): Promise<Map<string, Price>> {
+    logger.info(`[Velodrome] fetchPrices called for chain ${chainId}`)
+    
+    // Prevent multiple concurrent fetches for the same chain
+    const existingFetch = this.fetchingInProgress.get(chainId)
+    if (existingFetch) {
+      logger.info(`[Velodrome] Fetch already in progress for chain ${chainId}, returning existing promise`)
+      return existingFetch
+    }
+    
+    const fetchPromise = this._doFetchPrices(chainId, _tokens, existingPrices)
+    this.fetchingInProgress.set(chainId, fetchPromise)
+    
+    try {
+      const result = await fetchPromise
+      return result
+    } finally {
+      this.fetchingInProgress.delete(chainId)
+    }
+  }
+  
+  private async _doFetchPrices(
     chainId: number,
     _tokens: ERC20Token[],
     existingPrices: Map<string, Price>,
@@ -140,15 +173,18 @@ export class VelodromeFetcher {
     const publicClient = getPublicClient(chainId)
     const config = DISCOVERY_CONFIGS[chainId]
 
-    if (!config?.veloSugarAddress) {
-      logger.warn(`[Velodrome] No Sugar address configured for chain ${chainId}`)
+    // Use the LP Sugar address from config for discovery
+    const lpSugarAddress = config?.veloSugarAddress
+
+    if (!lpSugarAddress) {
+      logger.warn(`[Velodrome] No LP Sugar address configured for chain ${chainId}`)
       return priceMap
     }
 
     try {
-      // Get all pools from Sugar contract with chain-specific config
+      // Get all pools from LP Sugar contract with chain-specific config
       const chainConfig = {
-        10: { batchSize: 25, maxBatches: 39, timeout: 15000 }, // Optimism
+        10: { batchSize: 24, maxBatches: 40, timeout: 15000 }, // Optimism - max 24 due to contract limits
         8453: { batchSize: 10, maxBatches: 20, timeout: 30000 }, // Base
       }
 
@@ -160,7 +196,7 @@ export class VelodromeFetcher {
       const allPools: SugarPoolData[] = []
 
       logger.debug(
-        `[Velodrome] Starting to fetch pools for chain ${chainId} (batch size: ${batchSize}, max: ${maxBatches})`,
+        `[Velodrome] Starting to fetch pools for chain ${chainId} from LP Sugar (batch size: ${batchSize}, max: ${maxBatches})`,
       )
 
       for (let i = 0; i < maxBatches; i++) {
@@ -169,11 +205,11 @@ export class VelodromeFetcher {
 
           // Add timeout to prevent hanging
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Sugar call timeout after ${timeout}ms`)), timeout),
+            setTimeout(() => reject(new Error(`LP Sugar call timeout after ${timeout}ms`)), timeout),
           )
 
           const poolsPromise = publicClient.readContract({
-            address: config.veloSugarAddress as Address,
+            address: lpSugarAddress as Address,
             abi: SUGAR_ABI,
             functionName: 'all',
             args: [BigInt(batchSize), BigInt(offset)],
@@ -239,7 +275,7 @@ export class VelodromeFetcher {
         }
       }
 
-      logger.debug(
+      logger.info(
         `[Velodrome] Found ${lpTokens.size} LP tokens and ${uniqueTokens.size} unique component tokens`,
       )
 
@@ -264,6 +300,23 @@ export class VelodromeFetcher {
       const sugarOracleAddress = SUGAR_ORACLE_ADDRESSES[chainId]
       if (!sugarOracleAddress) {
         logger.warn(`[Velodrome] No Sugar Oracle configured for chain ${chainId}`)
+        return priceMap
+      }
+      
+      logger.info(`[Velodrome] Using Sugar Oracle at ${sugarOracleAddress} for chain ${chainId}`)
+      
+      // Verify the Sugar Oracle contract exists and is callable
+      try {
+        const testCall = await publicClient.readContract({
+          address: sugarOracleAddress as Address,
+          abi: SUGAR_ORACLE_ABI,
+          functionName: 'getManyRatesWithConnectors',
+          args: [1, [WETH_ADDRESSES[chainId] || zeroAddress] as Address[]],
+        })
+        logger.debug(`[Velodrome] Sugar Oracle test call successful, contract is responsive`)
+      } catch (error) {
+        logger.error(`[Velodrome] Sugar Oracle at ${sugarOracleAddress} is not responding:`, error)
+        logger.error(`[Velodrome] This likely means the contract address is incorrect or the contract has changed`)
         return priceMap
       }
 
@@ -308,27 +361,46 @@ export class VelodromeFetcher {
           logger.debug(`[Velodrome] Batch ${batchIndex + 1} completed: ${batchResults.size} prices`)
           return batchResults
         } catch (error: any) {
-          logger.warn(`[Velodrome] Batch ${batchIndex + 1} failed: ${error.message || error}`)
+          logger.debug(`[Velodrome] Batch ${batchIndex + 1} failed: ${error.message || error}`)
           return new Map<string, bigint>()
         }
       })
 
       // Process up to 5 batches in parallel
       const parallelLimit = 5
+      let successfulBatches = 0
+      let failedBatches = 0
+      
       for (let i = 0; i < batchPromises.length; i += parallelLimit) {
         const parallelBatch = batchPromises.slice(i, i + parallelLimit)
         const results = await Promise.all(parallelBatch)
 
-        // Merge results
+        // Merge results and count successes/failures
         results.forEach((batchResult) => {
-          batchResult.forEach((price, address) => {
-            allTokenPrices.set(address, price)
-          })
+          if (batchResult.size > 0) {
+            successfulBatches++
+            batchResult.forEach((price, address) => {
+              allTokenPrices.set(address, price)
+            })
+          } else {
+            failedBatches++
+          }
         })
 
         // Small delay between parallel groups to avoid overwhelming the RPC
         if (i + parallelLimit < batchPromises.length) {
           await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+      }
+      
+      // Log aggregated results
+      if (failedBatches > 0) {
+        logger.info(`[Velodrome] Chain ${chainId}: ${successfulBatches}/${batchPromises.length} batches succeeded (${failedBatches} timeouts)`)
+        
+        // If all batches failed, it's likely a systemic issue
+        if (successfulBatches === 0) {
+          logger.error(`[Velodrome] All batches failed on chain ${chainId} - Sugar Oracle may be down or address is incorrect`)
+          return priceMap
         }
       }
 

@@ -187,7 +187,7 @@ export class VeloDiscovery {
     try {
       // Chain-specific configuration
       const config = {
-        10: { batchSize: 25, maxBatches: 40, timeout: 30000 }, // Optimism
+        10: { batchSize: 24, maxBatches: 40, timeout: 30000 }, // Optimism - max 24 due to contract limits
         8453: { batchSize: 10, maxBatches: 30, timeout: 60000 }, // Base
       }
 
@@ -198,7 +198,7 @@ export class VeloDiscovery {
       }
       const { batchSize, maxBatches, timeout } = chainConfig
 
-      logger.debug(
+      logger.info(
         `Fetching Velodrome/Aerodrome pools from Sugar contract ${this.sugarAddress} on chain ${this.chainId} (batch size: ${batchSize}, max batches: ${maxBatches})`,
       )
 

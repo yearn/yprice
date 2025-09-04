@@ -55,6 +55,16 @@ export type DiscoverySource =
   | 'balancer'
   | 'generic-vaults'
 
+export type PriceFetcher = 
+  | 'defillama'
+  | 'curve-factories'
+  | 'gamma'
+  | 'pendle'
+  | 'velodrome'
+  | 'curve-amm'
+  | 'erc4626'
+  | 'yearn-vault'
+
 export interface DiscoveryConfig {
   chainId: number
   curveFactoryAddress?: string
@@ -70,4 +80,5 @@ export interface DiscoveryConfig {
   curveApiUrl?: string
   veloApiUrl?: string
   supportedServices?: DiscoverySource[]
+  supportedPriceFetchers?: PriceFetcher[]
 }

@@ -105,7 +105,12 @@ export class GammaFetcher {
       )
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
-      logger.warn(`Gamma fetch failed: ${errorMsg}`)
+      // Only log rate limiting once, not for each retry
+      if (errorMsg.includes('429')) {
+        logger.debug(`Gamma API rate limited (429) on chain ${chainId}`)
+      } else {
+        logger.warn(`Gamma fetch failed: ${errorMsg}`)
+      }
     }
 
     return priceMap

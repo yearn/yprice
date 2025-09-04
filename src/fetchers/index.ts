@@ -21,6 +21,8 @@ import { ERC20Token, Price } from 'models/index'
 import { logger } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
 import { progressTracker } from 'utils/progressTracker'
+import { DISCOVERY_CONFIGS } from 'discovery/config'
+import type { PriceFetcher } from 'discovery/types'
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher()
@@ -42,6 +44,16 @@ export class PriceFetcherOrchestrator {
     const progressKey = `fetch-${chainId}-${Date.now()}`
 
     progressTracker.start(progressKey, 'Price Fetching', tokens.length, chainId)
+
+    // Get supported price fetchers for this chain
+    const config = DISCOVERY_CONFIGS[chainId]
+    const supportedFetchers = config?.supportedPriceFetchers || []
+    
+    // If no supported fetchers configured, use default behavior
+    const shouldRunFetcher = (fetcher: PriceFetcher): boolean => {
+      if (supportedFetchers.length === 0) return true
+      return supportedFetchers.includes(fetcher)
+    }
 
     // Initialize with existing prices if provided
     if (existingPrices) {
@@ -94,36 +106,48 @@ export class PriceFetcherOrchestrator {
     )
 
     // All price fetchers that don't depend on other prices
-    const independentFetchers = [
-      // External APIs
-      this.defillama
-        .fetchPrices(chainId, missingTokens)
-        .then((results) => {
-          const filtered = new Map()
-          results.forEach((price, address) => {
-            if (!skipDefillamaAddresses.has(address)) {
-              filtered.set(address, price)
-            }
-          })
-          return filtered
-        })
-        .catch(handleError),
-      this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError),
-      this.gamma.fetchPrices(chainId, missingTokens).catch(handleError),
-      this.pendle.fetchPrices(chainId, missingTokens).catch(handleError),
+    const independentFetchers = []
 
-      // On-chain oracles
-      // Lens Oracle disabled - consistently failing with "getPrices returned no data"
-      // this.lensOracle
-      //   .fetchPrices(chainId, missingTokens)
-      //   .catch(handleError),
-    ]
-
-    // Chain-specific fetchers
-    if (chainId === 10 || chainId === 8453) {
-      // Velodrome needs priceMap for reference prices
+    // DeFiLlama - primary price source
+    if (shouldRunFetcher('defillama')) {
       independentFetchers.push(
-        this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError),
+        this.defillama
+          .fetchPrices(chainId, missingTokens)
+          .then((results) => {
+            const filtered = new Map()
+            results.forEach((price, address) => {
+              if (!skipDefillamaAddresses.has(address)) {
+                filtered.set(address, price)
+              }
+            })
+            return filtered
+          })
+          .catch(handleError)
+      )
+    }
+
+    // Other API-based fetchers
+    if (shouldRunFetcher('curve-factories')) {
+      independentFetchers.push(
+        this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError)
+      )
+    }
+
+    if (shouldRunFetcher('gamma')) {
+      independentFetchers.push(
+        this.gamma.fetchPrices(chainId, missingTokens).catch(handleError)
+      )
+    }
+
+    if (shouldRunFetcher('pendle')) {
+      independentFetchers.push(
+        this.pendle.fetchPrices(chainId, missingTokens).catch(handleError)
+      )
+    }
+
+    if (shouldRunFetcher('velodrome')) {
+      independentFetchers.push(
+        this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError)
       )
     }
 
@@ -153,22 +177,32 @@ export class PriceFetcherOrchestrator {
     // Dependent fetchers (need existing prices)
     progressTracker.update(progressKey, priceMap.size, 'Running dependent fetchers...')
 
-    const dependentFetchers = [
-      // CurveAmm needs priceMap for LP calculations
-      this.curveAmm
-        .fetchPrices(chainId, missingTokens, priceMap)
-        .catch(handleError),
-      // Vault fetchers need underlying token prices
-      this.erc4626
-        .fetchPrices(chainId, missingTokens, priceMap)
-        .catch(handleError),
-      this.yearnVault.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
-    ]
+    const dependentFetchers = []
 
-    // If Velodrome needs existing prices, run it in the dependent phase
-    if ((chainId === 10 || chainId === 8453) && priceMap.size > 0) {
+    // CurveAmm needs priceMap for LP calculations
+    if (shouldRunFetcher('curve-amm')) {
       dependentFetchers.push(
-        this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
+        this.curveAmm.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+      )
+    }
+
+    // Vault fetchers need underlying token prices
+    if (shouldRunFetcher('erc4626')) {
+      dependentFetchers.push(
+        this.erc4626.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+      )
+    }
+
+    if (shouldRunFetcher('yearn-vault')) {
+      dependentFetchers.push(
+        this.yearnVault.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
+      )
+    }
+
+    // If Velodrome needs existing prices and wasn't run in independent phase
+    if (shouldRunFetcher('velodrome') && priceMap.size > 0 && !independentFetchers.some(f => f.toString().includes('velodrome'))) {
+      dependentFetchers.push(
+        this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError)
       )
     }
 

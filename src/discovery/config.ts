@@ -23,6 +23,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'balancer',
       'generic-vaults'
     ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'pendle',
+      'curve-amm',
+      'erc4626',
+      'yearn-vault'
+    ],
     extraTokens: [
       '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
       '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
@@ -39,18 +47,26 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Optimism
   10: {
     chainId: 10,
-    veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address
+    veloSugarAddress: '0xb8A82F0334E43C2Eb0AB5d799036965F7bf07Ba8', // LP Sugar v3
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     supportedServices: [
       'yearn',
-      'velodrome',
+      // 'velodrome', // Temporarily disabled due to Sugar contract issues
       'tokenlist',
       'aave',
       'uniswap',
       'curve-factories',
       'balancer',
       'generic-vaults'
+    ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'velodrome',
+      'gamma',
+      'erc4626',
+      'yearn-vault'
     ],
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
@@ -72,6 +88,13 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'curve-factories',
       'balancer',
       'generic-vaults'
+    ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'gamma',
+      'erc4626',
+      'yearn-vault'
     ],
     extraTokens: [
       '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', // WXDAI
@@ -97,6 +120,13 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'balancer',
       'generic-vaults'
     ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'curve-amm',
+      'erc4626',
+      'yearn-vault'
+    ],
     extraTokens: [
       '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
       '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
@@ -121,6 +151,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'balancer',
       'generic-vaults'
     ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'gamma',
+      'curve-amm',
+      'erc4626',
+      'yearn-vault'
+    ],
     extraTokens: [
       '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', // WFTM
       '0x74b23882a30290451A17c44f4F05243b6b58C76d', // WETH
@@ -132,17 +170,24 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Base
   8453: {
     chainId: 8453,
-    veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address
+    veloSugarAddress: '0x68c19e13618C41158fE4bAba1B8fb3A9c74bDb0A', // LP Sugar v3
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     supportedServices: [
       'yearn',
-      'velodrome',
+      // 'velodrome', // Temporarily disabled due to Sugar contract issues
       'tokenlist',
       'aave',
       'uniswap',
       'curve-factories',
       'balancer',
       'generic-vaults'
+    ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'velodrome',
+      'erc4626',
+      'yearn-vault'
     ],
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
@@ -169,6 +214,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'balancer',
       'generic-vaults'
     ],
+    supportedPriceFetchers: [
+      'defillama',
+      'curve-factories',
+      'pendle',
+      'curve-amm',
+      'erc4626',
+      'yearn-vault'
+    ],
     extraTokens: [
       '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH
       '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC.e
@@ -186,6 +239,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'tokenlist',
       'pendle'
     ],
+    supportedPriceFetchers: [
+      'defillama',
+      'pendle'
+    ],
     extraTokens: [
       '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
       '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
@@ -200,6 +257,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     chainId: 43114,
     supportedServices: [
       'tokenlist'
+    ],
+    supportedPriceFetchers: [
+      'defillama'
     ],
     extraTokens: [
       '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', // WAVAX
@@ -216,6 +276,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn'
     ],
+    supportedPriceFetchers: [
+      'yearn-vault'
+    ],
     extraTokens: [
       // Add native and common tokens when available
     ],
@@ -225,6 +288,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     chainId: 747474,
     supportedServices: [
       'yearn'
+    ],
+    supportedPriceFetchers: [
+      'defillama',
+      'yearn-vault'
     ],
     extraTokens: [
       // Add native and common tokens when available
