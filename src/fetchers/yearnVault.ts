@@ -49,7 +49,7 @@ export class YearnVaultFetcher {
         return priceMap
       }
 
-      logger.info(
+      logger.debug(
         `Yearn Vault: Checking ${yearnVaults.length} potential vaults on chain ${chainId} (from ${tokens.length} total tokens)`,
       )
 
@@ -77,7 +77,7 @@ export class YearnVaultFetcher {
       })
 
       if (vaultsWithData.length > 0) {
-        logger.info(`Yearn Vault: Using ${vaultsWithData.length} cached pricePerShare values`)
+        logger.debug(`Yearn Vault: Using ${vaultsWithData.length} cached pricePerShare values`)
       }
 
       // For vaults without cached data, fetch on-chain
@@ -237,9 +237,9 @@ export class YearnVaultFetcher {
         }
       })
 
-      logger.info(`Yearn Vault: Calculated ${successCount} vault prices on chain ${chainId}`)
+      logger.debug(`Yearn Vault: Calculated ${successCount} vault prices on chain ${chainId}`)
       if (missingUnderlyingCount > 0) {
-        logger.info(`Yearn Vault: ${missingUnderlyingCount} vaults missing underlying prices`)
+        logger.debug(`Yearn Vault: ${missingUnderlyingCount} vaults missing underlying prices`)
       }
       if (zeroVaultPriceCount > 0) {
         logger.debug(`Yearn Vault: ${zeroVaultPriceCount} vaults calculated to zero price`)

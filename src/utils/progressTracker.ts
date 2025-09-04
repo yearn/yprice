@@ -83,59 +83,8 @@ export class ProgressTracker extends EventEmitter {
   }
 
   private display(): void {
-    // Skip display if verbose logs are disabled
-    if (process.env.DISABLE_VERBOSE_LOGS === 'true') {
-      return
-    }
-
-    const lines: string[] = []
-
-    // Group by phase
-    const phaseGroups = new Map<string, ProgressState[]>()
-    this.states.forEach((state) => {
-      const group = phaseGroups.get(state.phase) || []
-      group.push(state)
-      phaseGroups.set(state.phase, group)
-    })
-
-    phaseGroups.forEach((states, phase) => {
-      if (states.length === 1) {
-        const state = states[0]
-        if (state) {
-          const percent = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0
-          const bar = this.createProgressBar(percent)
-          const chainInfo = state.chainId ? ` [Chain ${state.chainId}]` : ''
-          lines.push(`${phase}${chainInfo}: ${bar} ${state.current}/${state.total} (${percent}%)`)
-          if (state.details) {
-            lines.push(`  └─ ${state.details}`)
-          }
-        }
-      } else {
-        // Aggregate progress for same phase across chains
-        const totalCurrent = states.reduce((sum, s) => sum + s.current, 0)
-        const totalTotal = states.reduce((sum, s) => sum + s.total, 0)
-        const percent = totalTotal > 0 ? Math.round((totalCurrent / totalTotal) * 100) : 0
-        const bar = this.createProgressBar(percent)
-        lines.push(`${phase}: ${bar} ${totalCurrent}/${totalTotal} (${percent}%)`)
-
-        // Show per-chain breakdown - but only if there are <= 5 chains
-        if (states.length <= 5) {
-          states.forEach((state) => {
-            const chainPercent =
-              state.total > 0 ? Math.round((state.current / state.total) * 100) : 0
-            const chainBar = this.createMiniProgressBar(chainPercent)
-            lines.push(`  Chain ${state.chainId}: ${chainBar} ${state.current}/${state.total}`)
-          })
-        } else {
-          lines.push(`  Processing ${states.length} chains...`)
-        }
-      }
-    })
-
-    if (lines.length > 0) {
-      // Clear previous lines and display new ones
-      console.log('\x1b[2K\r' + lines.join('\n'))
-    }
+    // Progress bars disabled - they don't add value and clutter the output
+    return
   }
 
   private createProgressBar(percent: number, width = 20, chars = ['█', '░']): string {

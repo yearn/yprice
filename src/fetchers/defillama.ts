@@ -143,7 +143,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
             (t) => !receivedAddresses.includes(t.address.toLowerCase()),
           )
           if (majorMissing.length > 0) {
-            logger.warn(
+            logger.debug(
               `DeFiLlama missing prices for major tokens:`,
               majorMissing.map((t) => `${t.symbol}: ${t.address}`),
             )

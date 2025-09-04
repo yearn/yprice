@@ -127,7 +127,7 @@ export class YearnDiscovery {
       const vaults = response.data?.data?.vaults
 
       if (Array.isArray(vaults)) {
-        logger.info(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`)
+        logger.debug(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`)
 
         for (const vault of vaults) {
           // Add vault token
@@ -187,7 +187,7 @@ export class YearnDiscovery {
     // Log discovery summary
     const vaultCount = tokens.filter((t) => t.source === 'yearn-vault').length
     const underlyingCount = tokens.filter((t) => t.source === 'yearn-underlying').length
-    logger.info(
+    logger.debug(
       `YearnDiscovery Kong summary for chain ${this.chainId}: ${vaultCount} vaults, ${underlyingCount} underlying tokens, ${tokens.length} total`,
     )
 
@@ -261,7 +261,7 @@ export class YearnDiscovery {
       try {
         const registryTokens = await this.discoverFromSpecificRegistry(registryAddress, 'v3')
         tokens.push(...registryTokens)
-        logger.info(
+        logger.debug(
           `Discovered ${registryTokens.length} tokens from V3 registry ${registryAddress} on chain ${this.chainId}`,
         )
       } catch (error) {

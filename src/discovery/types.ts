@@ -41,6 +41,20 @@ export interface VeloPoolData {
   stable: boolean
 }
 
+export type DiscoverySource = 
+  | 'yearn'
+  | 'curve-api'
+  | 'curve-factories'
+  | 'velodrome'
+  | 'tokenlist'
+  | 'gamma'
+  | 'pendle'
+  | 'aave'
+  | 'compound'
+  | 'uniswap'
+  | 'balancer'
+  | 'generic-vaults'
+
 export interface DiscoveryConfig {
   chainId: number
   curveFactoryAddress?: string
@@ -55,4 +69,5 @@ export interface DiscoveryConfig {
   extraTokens?: string[]
   curveApiUrl?: string
   veloApiUrl?: string
+  supportedServices?: DiscoverySource[]
 }

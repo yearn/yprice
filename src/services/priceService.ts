@@ -112,7 +112,7 @@ export class PriceService {
           }
 
           const chainStartTime = Date.now()
-          betterLogger.chainInfo(chainId, `Processing ${tokens.length} tokens...`)
+          logger.debug(`Chain ${chainId}: Processing ${tokens.length} tokens...`)
 
           // Helper to determine if a token is a derivative
           const isDerivative = (token: ERC20Token): boolean => {
@@ -132,9 +132,8 @@ export class PriceService {
           const baseTokens = tokens.filter((t) => !isDerivative(t))
           const derivativeTokens = tokens.filter((t) => isDerivative(t))
 
-          betterLogger.chainInfo(
-            chainId,
-            `Processing ${baseTokens.length} base tokens and ${derivativeTokens.length} derivative tokens`,
+          logger.debug(
+            `Chain ${chainId}: Processing ${baseTokens.length} base tokens and ${derivativeTokens.length} derivative tokens`,
           )
 
           // Phase 1: Process all base tokens and collect prices

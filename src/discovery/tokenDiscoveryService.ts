@@ -31,7 +31,7 @@ export class TokenDiscoveryService {
       return this.tokenCache
     }
 
-    logger.info('🔍 Starting token discovery across all chains...')
+    logger.info('🔍 Starting token discovery...')
     this.discoveredTokens.clear()
     this.tokenCache.clear()
 
@@ -70,12 +70,12 @@ export class TokenDiscoveryService {
       logger.debug(`Chain ${chainId}: Discovered ${erc20Tokens.length} unique tokens`)
     }
 
-    // Discovery health check summary
+    // Discovery summary
     logger.info(
       `✅ Token discovery complete: ${totalTokens} tokens across ${this.tokenCache.size} chains`,
     )
 
-    // Identify problematic chains
+    // Identify problematic chains at debug level
     const problematicChains: number[] = []
     for (const [chainId, tokens] of this.discoveredTokens.entries()) {
       const config = DISCOVERY_CONFIGS[chainId]
@@ -88,8 +88,8 @@ export class TokenDiscoveryService {
     }
 
     if (problematicChains.length > 0) {
-      logger.warn(`⚠️  Chains with potential discovery issues: ${problematicChains.join(', ')}`)
-      logger.warn(`   Consider checking RPC URLs and API endpoints for these chains.`)
+      logger.debug(`⚠️  Chains with potential discovery issues: ${problematicChains.join(', ')}`)
+      logger.debug(`   Consider checking RPC URLs and API endpoints for these chains.`)
     }
 
     this.lastDiscovery = now
@@ -97,7 +97,6 @@ export class TokenDiscoveryService {
   }
 
   private async discoverChainTokens(chainId: number, config: any): Promise<void> {
-    logger.info(`Chain ${chainId}: Starting discovery...`)
     const startTime = Date.now()
 
     try {
@@ -115,7 +114,7 @@ export class TokenDiscoveryService {
           chainId
 
         if (needsRpc) {
-          logger.warn(
+          logger.debug(
             `Chain ${chainId}: No RPC URL configured (RPC_URI_FOR_${chainId}). On-chain discoveries will be skipped.`,
           )
         }
@@ -145,9 +144,9 @@ export class TokenDiscoveryService {
           return result
         } catch (error: any) {
           if (error.message?.includes('Timeout')) {
-            logger.warn(`Chain ${chainId}: ${source} discovery timed out after ${timeoutMs}ms`)
+            logger.debug(`Chain ${chainId}: ${source} discovery timed out after ${timeoutMs}ms`)
           } else {
-            logger.warn(`Chain ${chainId}: ${source} discovery failed: ${error.message || error}`)
+            logger.debug(`Chain ${chainId}: ${source} discovery failed: ${error.message || error}`)
           }
           return null
         }
@@ -156,9 +155,16 @@ export class TokenDiscoveryService {
       // Prepare all discovery sources
       const discoveryPromises: Promise<TokenInfo[] | null>[] = []
       const sourceNames: string[] = []
+      const supportedServices = config.supportedServices || []
+
+      // If no supported services defined, run all services (backward compatibility)
+      const shouldRunService = (service: string): boolean => {
+        if (supportedServices.length === 0) return true
+        return supportedServices.includes(service as any)
+      }
 
       // 1. Yearn vaults (on-chain, needs more time)
-      if ((config.yearnRegistryAddress || chainId) && rpcUrl) {
+      if (shouldRunService('yearn') && (config.yearnRegistryAddress || chainId) && rpcUrl) {
         sourceNames.push('Yearn')
         discoveryPromises.push(
           withTimeout(
@@ -170,7 +176,7 @@ export class TokenDiscoveryService {
       }
 
       // 2. Curve pools from API (API call, medium timeout)
-      if (config.curveFactoryAddress || config.curveApiUrl) {
+      if (shouldRunService('curve-api') && (config.curveFactoryAddress || config.curveApiUrl)) {
         sourceNames.push('Curve API')
         discoveryPromises.push(
           withTimeout(
@@ -187,7 +193,7 @@ export class TokenDiscoveryService {
       }
 
       // 3. Curve factory pools (heavy on-chain discovery)
-      if (rpcUrl) {
+      if (shouldRunService('curve-factories') && rpcUrl) {
         sourceNames.push('Curve Factories')
         discoveryPromises.push(
           withTimeout(
@@ -199,7 +205,7 @@ export class TokenDiscoveryService {
       }
 
       // 4. Velodrome/Aerodrome pools
-      if (config.veloSugarAddress || config.veloApiUrl) {
+      if (shouldRunService('velodrome') && (config.veloSugarAddress || config.veloApiUrl)) {
         sourceNames.push('Velodrome/Aerodrome')
         discoveryPromises.push(
           withTimeout(
@@ -216,8 +222,9 @@ export class TokenDiscoveryService {
       }
 
       // 5. Token lists (API calls, medium timeout)
-      sourceNames.push('Token Lists')
-      discoveryPromises.push(
+      if (shouldRunService('tokenlist')) {
+        sourceNames.push('Token Lists')
+        discoveryPromises.push(
         withTimeout(
           tokenListDiscovery.discoverTokens(chainId).then((tokens) =>
             tokens.map((t: ERC20Token) => ({
@@ -229,30 +236,35 @@ export class TokenDiscoveryService {
           45000, // 45s for multiple API calls
           'Token Lists',
         ),
-      )
+        )
+      }
 
       // 6. Gamma Protocol (API call)
-      sourceNames.push('Gamma')
-      discoveryPromises.push(
+      if (shouldRunService('gamma')) {
+        sourceNames.push('Gamma')
+        discoveryPromises.push(
         withTimeout(
           new GammaDiscovery(chainId).discoverTokens(),
           45000, // 45s for API
           'Gamma',
         ),
-      )
+        )
+      }
 
       // 7. Pendle (API call)
-      sourceNames.push('Pendle')
-      discoveryPromises.push(
+      if (shouldRunService('pendle')) {
+        sourceNames.push('Pendle')
+        discoveryPromises.push(
         withTimeout(
           new PendleDiscovery(chainId).discoverTokens(),
           45000, // 45s for API
           'Pendle',
         ),
-      )
+        )
+      }
 
       // 8. AAVE (on-chain discovery)
-      if ((config.aaveV2LendingPool || config.aaveV3Pool) && rpcUrl) {
+      if (shouldRunService('aave') && (config.aaveV2LendingPool || config.aaveV3Pool) && rpcUrl) {
         sourceNames.push('AAVE')
         discoveryPromises.push(
           withTimeout(
@@ -269,7 +281,7 @@ export class TokenDiscoveryService {
       }
 
       // 9. Compound (on-chain discovery)
-      if (config.compoundComptroller && rpcUrl) {
+      if (shouldRunService('compound') && config.compoundComptroller && rpcUrl) {
         sourceNames.push('Compound')
         discoveryPromises.push(
           withTimeout(
@@ -281,7 +293,7 @@ export class TokenDiscoveryService {
       }
 
       // 10. Uniswap (heavy on-chain discovery)
-      if (rpcUrl) {
+      if (shouldRunService('uniswap') && rpcUrl) {
         sourceNames.push('Uniswap')
         discoveryPromises.push(
           withTimeout(
@@ -293,37 +305,34 @@ export class TokenDiscoveryService {
       }
 
       // 11. Balancer (API call)
-      sourceNames.push('Balancer')
-      discoveryPromises.push(
+      if (shouldRunService('balancer')) {
+        sourceNames.push('Balancer')
+        discoveryPromises.push(
         withTimeout(
           new BalancerDiscovery(chainId).discoverTokens(),
           45000, // 45s for API
           'Balancer',
         ),
-      )
+        )
+      }
 
       // 12. Generic Vaults from DefLlama (API call)
-      sourceNames.push('Generic Vaults')
-      discoveryPromises.push(
+      if (shouldRunService('generic-vaults')) {
+        sourceNames.push('Generic Vaults')
+        discoveryPromises.push(
         withTimeout(
           new GenericVaultDiscovery(chainId).discoverTokens(),
           45000, // 45s for API
           'Generic Vaults',
         ),
-      )
+        )
+      }
 
       // Execute all discoveries in parallel
-      logger.info(
-        `Chain ${chainId}: Running ${discoveryPromises.length} discovery sources in parallel...`,
-      )
+      logger.info(`Chain ${chainId}: Starting discovery with ${discoveryPromises.length} sources`)
       logger.debug(`Chain ${chainId}: Discovery sources queued: ${sourceNames.join(', ')}`)
 
-      // Add debug logging for promise execution
-      const startPromiseTime = Date.now()
       const results = await Promise.allSettled(discoveryPromises)
-      logger.debug(
-        `Chain ${chainId}: Promise.allSettled completed in ${Date.now() - startPromiseTime}ms`,
-      )
 
       // Collect all discovered tokens and track failures
       const allTokens: TokenInfo[] = []
@@ -346,12 +355,12 @@ export class TokenDiscoveryService {
             sourceStats[source] = tokens.length
             logger.debug(`Chain ${chainId}: ${sourceName} returned ${tokens.length} tokens`)
           } else {
-            logger.warn(`Chain ${chainId}: ${sourceName} returned 0 tokens`)
+            logger.debug(`Chain ${chainId}: ${sourceName} returned 0 tokens`)
           }
         } else if (result.status === 'fulfilled' && result.value === null) {
           // Timeout case
           timeoutCount++
-          logger.warn(`Chain ${chainId}: ${sourceName} timed out or returned null`)
+          logger.debug(`Chain ${chainId}: ${sourceName} timed out or returned null`)
         } else if (result.status === 'rejected') {
           // Actual failure
           const errorMsg = result.reason?.message || result.reason || 'Unknown error'
@@ -360,26 +369,26 @@ export class TokenDiscoveryService {
         }
       })
 
-      // Log summary first
-      logger.info(
+      // Log summary at debug level
+      logger.debug(
         `Chain ${chainId}: Discovery completed - ${successCount}/${discoveryPromises.length} sources succeeded${timeoutCount > 0 ? `, ${timeoutCount} timed out` : ''}`,
       )
 
-      // Log successful discoveries
+      // Log successful discoveries at debug level
       if (Object.keys(sourceStats).length > 0) {
-        logger.info(`Chain ${chainId}: Successful discoveries:`)
+        logger.debug(`Chain ${chainId}: Successful discoveries:`)
         Object.entries(sourceStats).forEach(([source, count]) => {
           if (count > 0) {
-            logger.info(`  ✓ ${source}: ${count} tokens`)
+            logger.debug(`  ✓ ${source}: ${count} tokens`)
           }
         })
       }
 
-      // Log failures if any
+      // Log failures at debug level
       if (failedSources.length > 0) {
-        logger.warn(`Chain ${chainId}: Failed discoveries:`)
+        logger.debug(`Chain ${chainId}: Failed discoveries:`)
         failedSources.forEach((failure) => {
-          logger.warn(`  ✗ ${failure}`)
+          logger.debug(`  ✗ ${failure}`)
         })
       }
 
@@ -401,7 +410,7 @@ export class TokenDiscoveryService {
         logger.debug(`Chain ${chainId}: Added ${config.extraTokens.length} configured tokens`)
       }
 
-      // Log token counts before deduplication
+      // Log token counts at debug level
       logger.debug(`Chain ${chainId}: Total tokens before deduplication: ${allTokens.length}`)
 
       // Deduplicate and store discovered tokens
@@ -422,9 +431,9 @@ export class TokenDiscoveryService {
         )
       }
 
-      // Log deduplication results
+      // Log deduplication results at debug level
       if (allTokens.length !== uniqueTokens.length) {
-        logger.info(
+        logger.debug(
           `Chain ${chainId}: Deduplication removed ${allTokens.length - uniqueTokens.length} duplicate tokens`,
         )
       }

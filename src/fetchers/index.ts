@@ -113,9 +113,10 @@ export class PriceFetcherOrchestrator {
       this.pendle.fetchPrices(chainId, missingTokens).catch(handleError),
 
       // On-chain oracles
-      this.lensOracle
-        .fetchPrices(chainId, missingTokens)
-        .catch(handleError),
+      // Lens Oracle disabled - consistently failing with "getPrices returned no data"
+      // this.lensOracle
+      //   .fetchPrices(chainId, missingTokens)
+      //   .catch(handleError),
     ]
 
     // Chain-specific fetchers

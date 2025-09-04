@@ -11,6 +11,18 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     aaveV2LendingPool: '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9',
     aaveV3Pool: '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2',
     compoundComptroller: '0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B',
+    supportedServices: [
+      'yearn',
+      'curve-api',
+      'curve-factories',
+      'tokenlist',
+      'pendle',
+      'aave',
+      'compound',
+      'uniswap',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
       '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
@@ -30,6 +42,16 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     veloSugarAddress: '0x766133beae539ed33a7e27dfa3a840deaad88947', // Latest LP Sugar address
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+    supportedServices: [
+      'yearn',
+      'velodrome',
+      'tokenlist',
+      'aave',
+      'uniswap',
+      'curve-factories',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
       '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', // USDC.e
@@ -43,6 +65,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   100: {
     chainId: 100,
     aaveV3Pool: '0xb50201558B00496A145fE76f7424749556E326D8',
+    supportedServices: [
+      'yearn',
+      'tokenlist',
+      'aave',
+      'curve-factories',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', // WXDAI
       '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1', // WETH
@@ -57,6 +87,16 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     yearnRegistryAddress: '0x32bF3dc86E278F17D6449f88A9d30385106319Dc',
     aaveV2LendingPool: '0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+    supportedServices: [
+      'yearn',
+      'curve-api',
+      'curve-factories',
+      'tokenlist',
+      'aave',
+      'uniswap',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
       '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
@@ -72,6 +112,15 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     chainId: 250,
     curveApiUrl: 'https://api.curve.finance/api/getPools/all/fantom',
     yearnRegistryAddress: '0x727fe1759430df13655ddb0731dE0D0FDE929b04',
+    supportedServices: [
+      'yearn',
+      'curve-api',
+      'curve-factories',
+      'tokenlist',
+      'uniswap',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', // WFTM
       '0x74b23882a30290451A17c44f4F05243b6b58C76d', // WETH
@@ -85,6 +134,16 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     chainId: 8453,
     veloSugarAddress: '0x01cba9e44ad356bad5e2d616357b69cb406248ac', // Latest LP Sugar address
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
+    supportedServices: [
+      'yearn',
+      'velodrome',
+      'tokenlist',
+      'aave',
+      'uniswap',
+      'curve-factories',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
       '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
@@ -99,6 +158,17 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     curveFactoryAddress: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
     yearnRegistryAddress: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+    supportedServices: [
+      'yearn',
+      'curve-api',
+      'curve-factories',
+      'tokenlist',
+      'pendle',
+      'aave',
+      'uniswap',
+      'balancer',
+      'generic-vaults'
+    ],
     extraTokens: [
       '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH
       '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC.e
@@ -112,6 +182,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // BSC
   56: {
     chainId: 56,
+    supportedServices: [
+      'tokenlist',
+      'pendle'
+    ],
     extraTokens: [
       '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
       '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
@@ -124,6 +198,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Avalanche C-Chain
   43114: {
     chainId: 43114,
+    supportedServices: [
+      'tokenlist'
+    ],
     extraTokens: [
       '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', // WAVAX
       '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // USDC
@@ -136,6 +213,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Sonic (formerly Fantom Sonic)
   146: {
     chainId: 146,
+    supportedServices: [
+      'yearn'
+    ],
     extraTokens: [
       // Add native and common tokens when available
     ],
@@ -143,6 +223,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Katana
   747474: {
     chainId: 747474,
+    supportedServices: [
+      'yearn'
+    ],
     extraTokens: [
       // Add native and common tokens when available
     ],
