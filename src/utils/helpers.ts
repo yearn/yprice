@@ -72,3 +72,18 @@ export const stringToBool = (value?: string): boolean =>
 export const safeString = (value: any, defaultValue = ''): string => value ?? defaultValue
 
 export { chunk }
+
+export const deduplicateTokens = <T extends { chainId: number; address: string }>(
+  tokens: T[],
+): T[] => {
+  const seen = new Set<string>()
+  const unique: T[] = []
+  for (const token of tokens) {
+    const key = `${token.chainId}-${token.address.toLowerCase()}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      unique.push(token)
+    }
+  }
+  return unique
+}

@@ -8,6 +8,8 @@ export * from './pendle'
 export * from './velodrome'
 export * from './yearnVault'
 
+import { DISCOVERY_CONFIGS } from 'discovery/config'
+import type { PriceFetcher } from 'discovery/types'
 import { CurveAmmFetcher } from 'fetchers/curveAmm'
 import { CurveFactoriesFetcher } from 'fetchers/curveFactories'
 import { DefilllamaFetcher } from 'fetchers/defillama'
@@ -20,8 +22,6 @@ import { ERC20Token, Price } from 'models/index'
 import { logger } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
 import { progressTracker } from 'utils/progressTracker'
-import { DISCOVERY_CONFIGS } from 'discovery/config'
-import type { PriceFetcher } from 'discovery/types'
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher()

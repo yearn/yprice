@@ -2,7 +2,6 @@ import { AAVEDiscovery } from 'discovery/aaveDiscovery'
 import { BalancerDiscovery } from 'discovery/balancerDiscovery'
 import { CompoundDiscovery } from 'discovery/compoundDiscovery'
 import { DISCOVERY_CONFIGS } from 'discovery/config'
-import { getCoreTokensForChain } from 'discovery/coreTokens'
 import { CurveDiscovery } from 'discovery/curveDiscovery'
 import { CurveFactoriesDiscovery } from 'discovery/curveFactories'
 import { GammaDiscovery } from 'discovery/gammaDiscovery'
@@ -14,7 +13,7 @@ import { UniswapDiscovery } from 'discovery/uniswapDiscovery'
 import { VeloDiscovery } from 'discovery/veloDiscovery'
 import { YearnDiscovery } from 'discovery/yearnDiscovery'
 import { ERC20Token } from 'models/index'
-import { logger } from 'utils/index'
+import { deduplicateTokens, logger } from 'utils/index'
 
 export class TokenDiscoveryService {
   private discoveredTokens: Map<number, TokenInfo[]> = new Map()
@@ -49,10 +48,15 @@ export class TokenDiscoveryService {
         }),
       ]).catch((error) => {
         logger.error(`Chain ${chainId} discovery failed: ${error.message}`)
-        // Ensure at least core tokens are available for the chain
-        const coreTokens = getCoreTokensForChain(Number(chainId))
-        if (coreTokens.length > 0) {
-          this.discoveredTokens.set(Number(chainId), coreTokens)
+        // Ensure at least base tokens are available for the chain
+        const config = DISCOVERY_CONFIGS[Number(chainId)]
+        if (config?.baseTokens && config.baseTokens.length > 0) {
+          const baseTokens: TokenInfo[] = config.baseTokens.map((address) => ({
+            address: address.toLowerCase(),
+            chainId: Number(chainId),
+            source: 'configured',
+          }))
+          this.discoveredTokens.set(Number(chainId), baseTokens)
         }
       })
 
@@ -225,17 +229,17 @@ export class TokenDiscoveryService {
       if (shouldRunService('tokenlist')) {
         sourceNames.push('Token Lists')
         discoveryPromises.push(
-        withTimeout(
-          tokenListDiscovery.discoverTokens(chainId).then((tokens) =>
-            tokens.map((t: ERC20Token) => ({
-              address: t.address,
-              chainId: t.chainId,
-              source: 'tokenlist',
-            })),
+          withTimeout(
+            tokenListDiscovery.discoverTokens(chainId).then((tokens) =>
+              tokens.map((t: ERC20Token) => ({
+                address: t.address,
+                chainId: t.chainId,
+                source: 'tokenlist',
+              })),
+            ),
+            45000, // 45s for multiple API calls
+            'Token Lists',
           ),
-          45000, // 45s for multiple API calls
-          'Token Lists',
-        ),
         )
       }
 
@@ -243,11 +247,11 @@ export class TokenDiscoveryService {
       if (shouldRunService('gamma')) {
         sourceNames.push('Gamma')
         discoveryPromises.push(
-        withTimeout(
-          new GammaDiscovery(chainId).discoverTokens(),
-          45000, // 45s for API
-          'Gamma',
-        ),
+          withTimeout(
+            new GammaDiscovery(chainId).discoverTokens(),
+            45000, // 45s for API
+            'Gamma',
+          ),
         )
       }
 
@@ -255,11 +259,11 @@ export class TokenDiscoveryService {
       if (shouldRunService('pendle')) {
         sourceNames.push('Pendle')
         discoveryPromises.push(
-        withTimeout(
-          new PendleDiscovery(chainId).discoverTokens(),
-          45000, // 45s for API
-          'Pendle',
-        ),
+          withTimeout(
+            new PendleDiscovery(chainId).discoverTokens(),
+            45000, // 45s for API
+            'Pendle',
+          ),
         )
       }
 
@@ -308,11 +312,11 @@ export class TokenDiscoveryService {
       if (shouldRunService('balancer')) {
         sourceNames.push('Balancer')
         discoveryPromises.push(
-        withTimeout(
-          new BalancerDiscovery(chainId).discoverTokens(),
-          45000, // 45s for API
-          'Balancer',
-        ),
+          withTimeout(
+            new BalancerDiscovery(chainId).discoverTokens(),
+            45000, // 45s for API
+            'Balancer',
+          ),
         )
       }
 
@@ -320,11 +324,11 @@ export class TokenDiscoveryService {
       if (shouldRunService('generic-vaults')) {
         sourceNames.push('Generic Vaults')
         discoveryPromises.push(
-        withTimeout(
-          new GenericVaultDiscovery(chainId).discoverTokens(),
-          45000, // 45s for API
-          'Generic Vaults',
-        ),
+          withTimeout(
+            new GenericVaultDiscovery(chainId).discoverTokens(),
+            45000, // 45s for API
+            'Generic Vaults',
+          ),
         )
       }
 
@@ -392,29 +396,24 @@ export class TokenDiscoveryService {
         })
       }
 
-      // CRITICAL: Always add core tokens and configured tokens
+      // CRITICAL: Always add base tokens
       // This ensures major tokens are always present even if discovery fails
-      const coreTokens = getCoreTokensForChain(chainId)
-      allTokens.push(...coreTokens)
-      logger.debug(`Chain ${chainId}: Added ${coreTokens.length} core tokens`)
-
-      // Add extra configured tokens
-      if (config.extraTokens) {
-        for (const address of config.extraTokens) {
+      if (config.baseTokens) {
+        for (const address of config.baseTokens) {
           allTokens.push({
             address: address.toLowerCase(),
             chainId,
             source: 'configured',
           })
         }
-        logger.debug(`Chain ${chainId}: Added ${config.extraTokens.length} configured tokens`)
+        logger.debug(`Chain ${chainId}: Added ${config.baseTokens.length} base tokens`)
       }
 
       // Log token counts at debug level
       logger.debug(`Chain ${chainId}: Total tokens before deduplication: ${allTokens.length}`)
 
       // Deduplicate and store discovered tokens
-      const uniqueTokens = this.deduplicateTokens(allTokens)
+      const uniqueTokens = deduplicateTokens(allTokens)
       this.discoveredTokens.set(chainId, uniqueTokens)
 
       // Debug: Check for specific vault
@@ -448,15 +447,13 @@ export class TokenDiscoveryService {
         `Token discovery failed for chain ${chainId}: ${(errorMsg || 'Unknown error').substring(0, 100)}`,
       )
 
-      // Even on error, ensure core tokens are available
-      const coreTokens = getCoreTokensForChain(chainId)
-      const configuredTokens = (config.extraTokens || []).map((address: string) => ({
+      // Even on error, ensure base tokens are available
+      const fallbackTokens: TokenInfo[] = (config.baseTokens || []).map((address: string) => ({
         address: address.toLowerCase(),
         chainId,
         source: 'configured',
       }))
 
-      const fallbackTokens = this.deduplicateTokens([...coreTokens, ...configuredTokens])
       this.discoveredTokens.set(chainId, fallbackTokens)
       logger.info(
         `Chain ${chainId}: Using ${fallbackTokens.length} fallback tokens due to discovery error`,
@@ -480,21 +477,6 @@ export class TokenDiscoveryService {
     }
 
     return erc20Tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = token.address.toLowerCase()
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 
   private getRpcUrl(chainId: number): string | undefined {

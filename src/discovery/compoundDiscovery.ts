@@ -1,6 +1,6 @@
-import { TokenInfo } from 'discovery/types'
-import { batchReadContracts, getPublicClient, logger } from 'utils/index'
-import { type Address, parseAbi, zeroAddress } from 'viem'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
+import { type Address, parseAbi } from 'viem'
 
 const COMPOUND_COMPTROLLER_ABI = parseAbi(['function getAllMarkets() view returns (address[])'])
 
@@ -11,7 +11,7 @@ const CTOKEN_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ])
 
-export class CompoundDiscovery {
+export class CompoundDiscovery implements Discovery {
   private chainId: number
   private comptrollerAddress?: string
 
@@ -58,20 +58,16 @@ export class CompoundDiscovery {
 
       const underlyingResults = await batchReadContracts<Address>(this.chainId, underlyingContracts)
 
-      markets.forEach((cTokenAddress, index) => {
+      markets.forEach((_, index) => {
         const result = underlyingResults[index]
         if (result && result.status === 'success' && result.result) {
           const underlying = result.result
-          if (underlying && underlying !== zeroAddress) {
-            tokens.push({
-              address: underlying.toLowerCase(),
-              chainId: this.chainId,
-              source: 'compound-underlying',
-            })
-          }
-        } else {
-          // This is likely cETH or similar, which doesn't have underlying
-          logger.debug(`No underlying for cToken ${cTokenAddress} - likely native asset wrapper`)
+          if (!underlying) return
+          tokens.push({
+            address: underlying.toLowerCase(),
+            chainId: this.chainId,
+            source: 'compound-underlying',
+          })
         }
       })
 
@@ -83,21 +79,6 @@ export class CompoundDiscovery {
       )
     }
 
-    return this.deduplicateTokens(tokens)
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
+    return deduplicateTokens(tokens)
   }
 }

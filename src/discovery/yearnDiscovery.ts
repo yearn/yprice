@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
+import { Discovery, TokenInfo } from 'discovery/types'
 import { uniqBy } from 'lodash'
 import { batchReadContracts, discoveryPriceCache, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
@@ -50,7 +50,7 @@ const VAULT_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ])
 
-export class YearnDiscovery {
+export class YearnDiscovery implements Discovery {
   private chainId: number
   private kongUrl: string = 'https://kong.yearn.farm/api/gql'
   private registryAddress?: string
@@ -69,19 +69,15 @@ export class YearnDiscovery {
       const kongTokens = await this.discoverFromKong()
       tokens.push(...kongTokens)
 
-      if (tokens.length === 0 && (this.registryAddress || this.v3RegistryAddresses.length > 0)) {
-        // Try V2 registry if available
-        if (this.registryAddress) {
-          const v2Tokens = await this.discoverFromRegistry()
-          tokens.push(...v2Tokens)
-        }
+      if (!!tokens.length) return tokens
 
-        // Try V3 registries if available
-        if (this.v3RegistryAddresses.length > 0) {
-          const v3Tokens = await this.discoverFromV3Registries()
+      // Fallback to registries if Kong fails
+      await Promise.all([this.discoverFromRegistry(), this.discoverFromV3Registries()]).then(
+        ([v2Tokens, v3Tokens]) => {
+          tokens.push(...v2Tokens)
           tokens.push(...v3Tokens)
-        }
-      }
+        },
+      )
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
       logger.warn(

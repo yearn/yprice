@@ -15,7 +15,6 @@ const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   // Ethereum
   1: [
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/1' },
-    { name: 'Uniswap', url: 'https://tokens.coingecko.com/uniswap/all.json' },
     { name: 'CoinGecko Ethereum', url: 'https://tokens.coingecko.com/ethereum/all.json' },
   ],
   // Optimism
@@ -37,10 +36,6 @@ const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   ],
   // Polygon
   137: [
-    {
-      name: 'Polygon Official',
-      url: 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json',
-    },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/137' },
     { name: 'CoinGecko Polygon', url: 'https://tokens.coingecko.com/polygon-pos/all.json' },
   ],
@@ -56,7 +51,6 @@ const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   ],
   // Arbitrum
   42161: [
-    { name: 'Arbitrum Bridge', url: 'https://bridge.arbitrum.io/token-list-42161.json' },
     { name: '1inch', url: 'https://tokens.1inch.io/v1.2/42161' },
     { name: 'CoinGecko Arbitrum', url: 'https://tokens.coingecko.com/arbitrum-one/all.json' },
   ],

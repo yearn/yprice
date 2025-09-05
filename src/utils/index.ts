@@ -1,5 +1,6 @@
 export { discoveryPriceCache } from './discoveryPriceCache'
 export * from './helpers'
+export { createHttpsAgent } from './https'
 export * from './logger'
 export { batchReadContracts } from './multicallAggregator'
 export * from './priceCache'

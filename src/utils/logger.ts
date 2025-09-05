@@ -5,13 +5,11 @@ const silentMode = process.env.SILENT_MODE === 'true'
 
 const skipPatterns = [
   'DeFiLlama returned',
-  'CoinGecko returned',
   'Fetching prices for',
   'Stored',
   'from cache',
   '[Velodrome]',
   'DeFiLlama:',
-  'CoinGecko:',
 ]
 
 const customFormat = winston.format.printf(({ level, message }: any) => {

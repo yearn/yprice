@@ -21,7 +21,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'compound',
       'uniswap',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
     supportedPriceFetchers: [
       'defillama',
@@ -29,9 +29,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'pendle',
       'curve-amm',
       'erc4626',
-      'yearn-vault'
+      'yearn-vault',
     ],
-    extraTokens: [
+    baseTokens: [
       '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
       '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
       '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
@@ -58,7 +58,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'uniswap',
       'curve-factories',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
     supportedPriceFetchers: [
       'defillama',
@@ -66,9 +66,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'velodrome',
       'gamma',
       'erc4626',
-      'yearn-vault'
+      'yearn-vault',
     ],
-    extraTokens: [
+    baseTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
       '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', // USDC.e
       '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // USDC
@@ -87,16 +87,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'aave',
       'curve-factories',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
-    supportedPriceFetchers: [
-      'defillama',
-      'curve-factories',
-      'gamma',
-      'erc4626',
-      'yearn-vault'
-    ],
-    extraTokens: [
+    supportedPriceFetchers: ['defillama', 'curve-factories', 'gamma', 'erc4626', 'yearn-vault'],
+    baseTokens: [
       '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d', // WXDAI
       '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1', // WETH
       '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', // USDC
@@ -118,16 +112,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'aave',
       'uniswap',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
-    supportedPriceFetchers: [
-      'defillama',
-      'curve-factories',
-      'curve-amm',
-      'erc4626',
-      'yearn-vault'
-    ],
-    extraTokens: [
+    supportedPriceFetchers: ['defillama', 'curve-factories', 'curve-amm', 'erc4626', 'yearn-vault'],
+    baseTokens: [
       '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
       '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
       '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC.e
@@ -149,7 +137,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'tokenlist',
       'uniswap',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
     supportedPriceFetchers: [
       'defillama',
@@ -157,9 +145,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'gamma',
       'curve-amm',
       'erc4626',
-      'yearn-vault'
+      'yearn-vault',
     ],
-    extraTokens: [
+    baseTokens: [
       '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', // WFTM
       '0x74b23882a30290451A17c44f4F05243b6b58C76d', // WETH
       '0x04068DA6C83AFCFA0e13ba15A6696662335D5B75', // USDC
@@ -180,16 +168,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'uniswap',
       'curve-factories',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
-    supportedPriceFetchers: [
-      'defillama',
-      'curve-factories',
-      'velodrome',
-      'erc4626',
-      'yearn-vault'
-    ],
-    extraTokens: [
+    supportedPriceFetchers: ['defillama', 'curve-factories', 'velodrome', 'erc4626', 'yearn-vault'],
+    baseTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
       '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
       '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA', // USDbC
@@ -212,7 +194,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'aave',
       'uniswap',
       'balancer',
-      'generic-vaults'
+      'generic-vaults',
     ],
     supportedPriceFetchers: [
       'defillama',
@@ -220,9 +202,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'pendle',
       'curve-amm',
       'erc4626',
-      'yearn-vault'
+      'yearn-vault',
     ],
-    extraTokens: [
+    baseTokens: [
       '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH
       '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', // USDC.e
       '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
@@ -235,15 +217,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // BSC
   56: {
     chainId: 56,
-    supportedServices: [
-      'tokenlist',
-      'pendle'
-    ],
-    supportedPriceFetchers: [
-      'defillama',
-      'pendle'
-    ],
-    extraTokens: [
+    supportedServices: ['tokenlist', 'pendle'],
+    supportedPriceFetchers: ['defillama', 'pendle'],
+    baseTokens: [
       '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
       '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
       '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', // USDC
@@ -255,13 +231,9 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Avalanche C-Chain
   43114: {
     chainId: 43114,
-    supportedServices: [
-      'tokenlist'
-    ],
-    supportedPriceFetchers: [
-      'defillama'
-    ],
-    extraTokens: [
+    supportedServices: ['tokenlist'],
+    supportedPriceFetchers: ['defillama'],
+    baseTokens: [
       '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', // WAVAX
       '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // USDC
       '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', // USDT
@@ -273,27 +245,18 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Sonic (formerly Fantom Sonic)
   146: {
     chainId: 146,
-    supportedServices: [
-      'yearn'
-    ],
-    supportedPriceFetchers: [
-      'yearn-vault'
-    ],
-    extraTokens: [
+    supportedServices: ['yearn'],
+    supportedPriceFetchers: ['yearn-vault'],
+    baseTokens: [
       // Add native and common tokens when available
     ],
   },
   // Katana
   747474: {
     chainId: 747474,
-    supportedServices: [
-      'yearn'
-    ],
-    supportedPriceFetchers: [
-      'defillama',
-      'yearn-vault'
-    ],
-    extraTokens: [
+    supportedServices: ['yearn'],
+    supportedPriceFetchers: ['defillama', 'yearn-vault'],
+    baseTokens: [
       // Add native and common tokens when available
     ],
   },

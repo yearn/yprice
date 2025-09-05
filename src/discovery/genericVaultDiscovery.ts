@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
+import { Discovery, TokenInfo } from 'discovery/types'
 import { logger } from 'utils/index'
 
 interface DefLlamaYield {
@@ -65,7 +65,7 @@ const VAULT_PROTOCOLS = [
   'zerolend',
 ]
 
-export class GenericVaultDiscovery {
+export class GenericVaultDiscovery implements Discovery {
   private chainId: number
   private defLlamaUrl = 'https://yields.llama.fi/pools'
 

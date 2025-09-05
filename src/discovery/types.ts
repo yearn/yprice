@@ -1,3 +1,7 @@
+export interface Discovery {
+  discoverTokens(): Promise<TokenInfo[]>
+}
+
 export interface TokenInfo {
   address: string
   chainId: number
@@ -41,7 +45,7 @@ export interface VeloPoolData {
   stable: boolean
 }
 
-export type DiscoverySource = 
+export type DiscoverySource =
   | 'yearn'
   | 'curve-api'
   | 'curve-factories'
@@ -55,7 +59,7 @@ export type DiscoverySource =
   | 'balancer'
   | 'generic-vaults'
 
-export type PriceFetcher = 
+export type PriceFetcher =
   | 'defillama'
   | 'curve-factories'
   | 'gamma'
@@ -76,7 +80,7 @@ export interface DiscoveryConfig {
   compoundComptroller?: string
   gammaHypervisor?: string
   pendleMarketFactory?: string
-  extraTokens?: string[]
+  baseTokens?: string[]
   curveApiUrl?: string
   veloApiUrl?: string
   supportedServices?: DiscoverySource[]

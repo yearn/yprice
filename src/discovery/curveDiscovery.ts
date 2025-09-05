@@ -1,7 +1,12 @@
-import https from 'node:https'
 import axios from 'axios'
-import { CurvePoolData, TokenInfo } from 'discovery/types'
-import { batchReadContracts, getPublicClient, logger } from 'utils/index'
+import { CurvePoolData, Discovery, TokenInfo } from 'discovery/types'
+import {
+  batchReadContracts,
+  createHttpsAgent,
+  deduplicateTokens,
+  getPublicClient,
+  logger,
+} from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 const CURVE_FACTORY_ABI = parseAbi([
@@ -10,7 +15,7 @@ const CURVE_FACTORY_ABI = parseAbi([
   'function get_coins(address pool) view returns (address[2])',
 ])
 
-export class CurveDiscovery {
+export class CurveDiscovery implements Discovery {
   private chainId: number
   private factoryAddress?: string
   private apiUrl?: string
@@ -25,7 +30,6 @@ export class CurveDiscovery {
     const tokens: TokenInfo[] = []
 
     try {
-      // Try API first as it's faster and more complete
       if (this.apiUrl) {
         const apiTokens = await this.discoverFromAPI()
         tokens.push(...apiTokens)
@@ -43,16 +47,14 @@ export class CurveDiscovery {
       )
     }
 
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromAPI(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
 
     try {
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.get<{ success: boolean; data: { poolData: CurvePoolData[] } }>(
         this.apiUrl!,
@@ -193,20 +195,5 @@ export class CurveDiscovery {
     }
 
     return tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }

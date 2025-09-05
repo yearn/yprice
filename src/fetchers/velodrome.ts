@@ -138,12 +138,12 @@ export class VelodromeFetcher {
     _tokens: ERC20Token[],
     existingPrices: Map<string, Price>,
   ): Promise<Map<string, Price>> {
-    logger.info(`[Velodrome] fetchPrices called for chain ${chainId}`)
+    logger.debug(`[Velodrome] fetchPrices called for chain ${chainId}`)
 
     // Prevent multiple concurrent fetches for the same chain
     const existingFetch = this.fetchingInProgress.get(chainId)
     if (existingFetch) {
-      logger.info(
+      logger.debug(
         `[Velodrome] Fetch already in progress for chain ${chainId}, returning existing promise`,
       )
       return existingFetch

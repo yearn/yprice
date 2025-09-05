@@ -1,54 +1,71 @@
 # Yearn Pricing Service
 
-TypeScript implementation of the Yearn Finance pricing service that fetches and serves token prices from multiple sources.
+A high-performance TypeScript pricing service that aggregates token prices from multiple DeFi protocols and external sources for Yearn Finance ecosystem.
 
-## Features
+## Price Discovery Process
 
-- Multi-source price fetching (DeFiLlama, CoinGecko, and more)
-- In-memory caching with TTL and persistence
-- REST API with the same endpoints as the original Go implementation
-- Support for multiple blockchain networks
-- Rate limiting and error handling
-- Fully typed with TypeScript
+1. **Token Discovery**: Automated discovery from multiple protocols
+   - Scans protocol registries and factories
+   - Identifies LP tokens, vault tokens, and derivatives
+   - Maintains a comprehensive token registry
 
-## Installation
+2. **Price Fetching**: Multi-source price aggregation
+   - Primary: DeFiLlama API for broad coverage
+   - Secondary: On-chain oracles (Lens Protocol)
+   - Tertiary: Protocol-specific calculations
+   - Fallback: Direct DEX pool queries
 
-```bash
-npm install
-# or
-yarn install
-```
+3. **Caching Strategy**:
+   - In-memory cache with configurable TTL
+   - Optional Redis for distributed deployments
+   - Persistent file storage for recovery
+   - Chain-specific cache isolation
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure:
-
-```bash
-cp .env.example .env
-```
-
 ### Environment Variables
 
-- `PORT` - Server port (default: 8080)
-- `NODE_ENV` - Environment (development/production)
-- `COINGECKO_API_KEY` - Optional CoinGecko API key for better rate limits
-- `DEFILLAMA_API_KEY` - Optional DeFiLlama API key
-- `CACHE_TTL_SECONDS` - Cache TTL in seconds (default: 60)
-- `RATE_LIMIT_WINDOW_MS` - Rate limit window in milliseconds
-- `RATE_LIMIT_MAX_REQUESTS` - Max requests per window
-- `LOG_LEVEL` - Logging level (info/debug/error)
+See a `.example.env` file in the root directory:
+
+```env
+# API Keys (optional but recommended)
+DEFILLAMA_API_KEY=your_defillama_api_key
+
+# RPC Endpoints (required)
+RPC_URL_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/your_key
+RPC_URL_OPTIMISM=https://opt-mainnet.g.alchemy.com/v2/your_key
+RPC_URL_POLYGON=https://polygon-mainnet.g.alchemy.com/v2/your_key
+RPC_URL_ARBITRUM=https://arb-mainnet.g.alchemy.com/v2/your_key
+RPC_URL_BASE=https://base-mainnet.g.alchemy.com/v2/your_key
+RPC_URL_FANTOM=https://rpc.ftm.tools/
+RPC_URL_GNOSIS=https://rpc.gnosischain.com/
+
+# Cache Configuration
+CACHE_TTL_SECONDS=60
+REDIS_URL=redis://localhost:6379 # Optional
+
+# Server Configuration
+PORT=8080
+NODE_ENV=production
+LOG_LEVEL=info
+```
 
 ## Development
 
 ```bash
-npm run dev
+bun run refresh     # Run token discovery and price refresh
+bun vercel          # Run local Vercel development server
+
+bun run lint        # Check code style
+bun run lint:fix    # Fix code style issues
+bun run format      # Format code with Biome
 ```
 
-## Production
+### Vercel Deployment
 
 ```bash
-npm run build
-npm start
+# Deploy to Vercel
+bun run deploy
 ```
 
 ## API Endpoints
@@ -133,54 +150,30 @@ Request body:
 - Arbitrum (42161)
 - Katana (747474)
 
-## Architecture
-
-```
-src/
-├── models/          # TypeScript interfaces and types
-├── storage/         # In-memory cache with persistence
-├── fetchers/        # Price fetching from external sources
-│   ├── defillama.ts
-│   ├── coingecko.ts
-│   └── index.ts     # Orchestrator
-├── api/            # Express routes
-├── utils/          # Helper functions
-└── index.ts        # Main application entry
-```
-
-## Testing
-
-```bash
-npm test
-```
-
-## Price Sources
-
-The service fetches prices from multiple sources in order of priority:
-
-1. **DeFiLlama** - Primary source with wide token coverage
-2. **CoinGecko** - Fallback for tokens not found in DeFiLlama
-3. Additional sources can be added by implementing the fetcher interface
-
-## Caching Strategy
-
-- In-memory cache with configurable TTL (default: 60 seconds)
-- Automatic persistence to disk for recovery after restarts
-- Chain-specific cache isolation
-- Concurrent-safe operations
-
 ## API Response Format
 
-### Raw Price Response (default)
+### Standard Price Response
 
 ```json
 {
-  "address": "0x...",
-  "price": "1000000",
-  "source": "defillama"
+  "0x...": 1234.56,
+  "0x...": 0.9876
+}
+```
+
+### Detailed Price Response (`/details` endpoints)
+
+```json
+{
+  "0x...": {
+    "price": 1234.56,
+    "source": "defillama",
+    "timestamp": 1699123456,
+    "confidence": 0.99
+  }
 }
 ```
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) file for details

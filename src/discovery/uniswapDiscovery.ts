@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
-import { batchReadContracts, getPublicClient, logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi } from 'viem'
 
 // Uniswap V2 Factory addresses
@@ -33,13 +33,6 @@ const V2_PAIR_ABI = parseAbi([
   'function token1() view returns (address)',
 ])
 
-// V3 Factory ABI - keeping for future use when we implement V3 pool discovery
-// const V3_FACTORY_ABI = parseAbi([
-//   'function owner() view returns (address)',
-//   'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)',
-//   'event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)',
-// ]);
-
 // Known Uniswap token lists
 const UNISWAP_TOKEN_LISTS: Record<number, string> = {
   1: 'https://tokens.uniswap.org',
@@ -49,7 +42,7 @@ const UNISWAP_TOKEN_LISTS: Record<number, string> = {
   8453: 'https://static.optimism.io/optimism.tokenlist.json',
 }
 
-export class UniswapDiscovery {
+export class UniswapDiscovery implements Discovery {
   private chainId: number
 
   constructor(chainId: number) {
@@ -69,7 +62,7 @@ export class UniswapDiscovery {
     tokens.push(...v3Tokens)
 
     logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Uniswap tokens total`)
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverV2Pairs(): Promise<TokenInfo[]> {
@@ -224,20 +217,5 @@ export class UniswapDiscovery {
     }
 
     return tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }

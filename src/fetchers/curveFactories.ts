@@ -1,7 +1,6 @@
-import https from 'node:https'
 import axios from 'axios'
 import { ERC20Token, Price } from 'models/index'
-import { logger } from 'utils/index'
+import { createHttpsAgent, logger } from 'utils/index'
 
 interface CurvePoolData {
   id: string
@@ -46,9 +45,7 @@ export class CurveFactoriesFetcher {
     try {
       logger.debug(`Curve Factories: Fetching prices for chain ${chainId}`)
 
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.get<CurveAPIResponse>(apiUrl, {
         timeout: 30000,

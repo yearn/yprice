@@ -1,5 +1,5 @@
-import { TokenInfo } from 'discovery/types'
-import { batchReadContracts, getPublicClient, logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 // Curve Factory addresses for different pool types (comprehensive list from ydaemon)
@@ -13,7 +13,6 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'stable-ng': '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',
     'twocrypto-ng': '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F',
     'tricrypto-ng': '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-    // Removed invalid eywa address
   },
   10: {
     // Optimism
@@ -81,7 +80,7 @@ const FACTORY_ABI = parseAbi([
   'function get_gauge(address pool) view returns (address)',
 ])
 
-export class CurveFactoriesDiscovery {
+export class CurveFactoriesDiscovery implements Discovery {
   private chainId: number
   private factories: Record<string, string> = {}
 
@@ -115,7 +114,7 @@ export class CurveFactoriesDiscovery {
       }
     }
 
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromFactory(
@@ -278,22 +277,5 @@ export class CurveFactoriesDiscovery {
     }
 
     return tokens
-  }
-
-  // Removed discoverPoolTokens - now using batch processing in discoverFromFactory
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }

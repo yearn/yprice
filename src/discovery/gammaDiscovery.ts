@@ -1,7 +1,6 @@
-import https from 'node:https'
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
-import { discoveryPriceCache, logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { createHttpsAgent, deduplicateTokens, discoveryPriceCache, logger } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 interface GammaHypervisor {
@@ -21,15 +20,9 @@ interface GammaResponse {
 }
 
 // Gamma API endpoints - same endpoint for all chains
-const GAMMA_API_URLS: Record<number, string> = {
-  1: 'https://wire2.gamma.xyz/hypervisors/allData',
-  10: 'https://wire2.gamma.xyz/hypervisors/allData',
-  137: 'https://wire2.gamma.xyz/hypervisors/allData',
-  42161: 'https://wire2.gamma.xyz/hypervisors/allData',
-  8453: 'https://wire2.gamma.xyz/hypervisors/allData',
-}
+const GAMMA_API_URL = 'https://wire2.gamma.xyz/hypervisors/allData'
 
-export class GammaDiscovery {
+export class GammaDiscovery implements Discovery {
   private chainId: number
 
   constructor(chainId: number) {
@@ -38,16 +31,10 @@ export class GammaDiscovery {
 
   async discoverTokens(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
-    const apiUrl = GAMMA_API_URLS[this.chainId]
-
-    if (!apiUrl) {
-      return tokens // No Gamma on this chain
-    }
+    const apiUrl = GAMMA_API_URL
 
     try {
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.get<GammaResponse>(apiUrl, {
         timeout: 30000,
@@ -114,21 +101,6 @@ export class GammaDiscovery {
       logger.warn(`Gamma discovery failed for chain ${this.chainId}:`, error.message)
     }
 
-    return this.deduplicateTokens(tokens)
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
+    return deduplicateTokens(tokens)
   }
 }

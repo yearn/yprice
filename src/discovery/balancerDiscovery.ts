@@ -1,7 +1,6 @@
-import https from 'node:https'
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
-import { logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { createHttpsAgent, deduplicateTokens, logger } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 // Balancer subgraph endpoints - Using dev endpoints to avoid rate limits
@@ -38,7 +37,7 @@ interface BalancerSubgraphResponse {
   }
 }
 
-export class BalancerDiscovery {
+export class BalancerDiscovery implements Discovery {
   private chainId: number
 
   constructor(chainId: number) {
@@ -57,7 +56,7 @@ export class BalancerDiscovery {
     tokens.push(...apiTokens)
 
     logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`)
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromSubgraph(): Promise<TokenInfo[]> {
@@ -87,9 +86,7 @@ export class BalancerDiscovery {
         }
       `
 
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.post<BalancerSubgraphResponse>(
         subgraphUrl,
@@ -177,9 +174,7 @@ export class BalancerDiscovery {
         return tokens
       }
 
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.get(`${BALANCER_API_URL}${this.chainId}`, {
         timeout: 30000,
@@ -224,20 +219,5 @@ export class BalancerDiscovery {
     }
 
     return tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }

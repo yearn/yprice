@@ -1,7 +1,6 @@
-import https from 'node:https'
 import axios from 'axios'
-import { TokenInfo } from 'discovery/types'
-import { discoveryPriceCache, logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { createHttpsAgent, deduplicateTokens, discoveryPriceCache, logger } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 interface PendleAsset {
@@ -96,7 +95,7 @@ const PENDLE_MARKETS_URLS: Record<number, string> = {
   56: 'https://api-v2.pendle.finance/core/v1/56/markets?order_by=name%3A1&skip=0&limit=100',
 }
 
-export class PendleDiscovery {
+export class PendleDiscovery implements Discovery {
   private chainId: number
 
   constructor(chainId: number) {
@@ -125,16 +124,14 @@ export class PendleDiscovery {
     }
 
     logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Pendle tokens total`)
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromAssets(apiUrl: string): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
 
     try {
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       const response = await axios.get<PendleResponse>(apiUrl, {
         timeout: 30000,
@@ -240,9 +237,7 @@ export class PendleDiscovery {
     let skip = 0
 
     try {
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: false, // Temporarily disable SSL verification
-      })
+      const httpsAgent = createHttpsAgent()
 
       // Fetch all pages
       while (true) {
@@ -345,20 +340,5 @@ export class PendleDiscovery {
     }
 
     return tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }

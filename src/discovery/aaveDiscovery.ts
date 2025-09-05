@@ -1,10 +1,9 @@
-import { TokenInfo } from 'discovery/types'
-import { batchReadContracts, getPublicClient, logger } from 'utils/index'
+import { Discovery, TokenInfo } from 'discovery/types'
+import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 const AAVE_V2_LENDING_POOL_ABI = parseAbi(['function getReservesList() view returns (address[])'])
 
-// AAVE V3 Pool ABI - complex tuple needs proper object definition
 const AAVE_V3_POOL_ABI = [
   {
     inputs: [],
@@ -44,14 +43,13 @@ const AAVE_V3_POOL_ABI = [
   },
 ] as const
 
-// ERC20 ABI for fetching token metadata
 const ERC20_ABI = parseAbi([
   'function symbol() view returns (string)',
   'function name() view returns (string)',
   'function decimals() view returns (uint8)',
 ])
 
-export class AAVEDiscovery {
+export class AAVEDiscovery implements Discovery {
   private chainId: number
   private v2PoolAddress?: string
   private v3PoolAddress?: string
@@ -65,20 +63,19 @@ export class AAVEDiscovery {
   async discoverTokens(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
 
-    try {
-      // Discover AAVE V3 tokens
-      if (this.v3PoolAddress) {
-        const v3Tokens = await this.discoverV3Tokens()
-        tokens.push(...v3Tokens)
-        logger.debug(`Chain ${this.chainId}: Discovered ${v3Tokens.length} AAVE V3 tokens`)
-      }
+    if (!this.v2PoolAddress && !this.v3PoolAddress) {
+      return tokens
+    }
 
-      // Discover AAVE V2 tokens
-      if (this.v2PoolAddress) {
-        const v2Tokens = await this.discoverV2Tokens()
-        tokens.push(...v2Tokens)
-        logger.debug(`Chain ${this.chainId}: Discovered ${v2Tokens.length} AAVE V2 tokens`)
-      }
+    try {
+      const [v2Tokens, v3Tokens] = await Promise.all([
+        this.discoverV2Tokens(),
+        this.discoverV3Tokens(),
+      ])
+      tokens.push(...v2Tokens)
+      tokens.push(...v3Tokens)
+      logger.debug(`Chain ${this.chainId}: Discovered ${v2Tokens.length} AAVE V2 tokens`)
+      logger.debug(`Chain ${this.chainId}: Discovered ${v3Tokens.length} AAVE V3 tokens`)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
       logger.warn(
@@ -86,7 +83,7 @@ export class AAVEDiscovery {
       )
     }
 
-    return this.deduplicateTokens(tokens)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverV3Tokens(): Promise<TokenInfo[]> {
@@ -114,7 +111,7 @@ export class AAVEDiscovery {
         args: [reserve],
       }))
 
-      type ReserveData = {
+      const reserveDataResults = await batchReadContracts<{
         configuration: bigint
         liquidityIndex: bigint
         currentLiquidityRate: bigint
@@ -130,12 +127,7 @@ export class AAVEDiscovery {
         accruedToTreasury: bigint
         unbacked: bigint
         isolationModeTotalDebt: bigint
-      }
-
-      const reserveDataResults = await batchReadContracts<ReserveData>(
-        this.chainId,
-        reserveDataContracts,
-      )
+      }>(this.chainId, reserveDataContracts)
 
       // Collect all aToken addresses for metadata fetching
       const aTokenAddresses: Address[] = []
@@ -258,8 +250,7 @@ export class AAVEDiscovery {
           source: 'aave-underlying',
         })
 
-        // For V2, we'd need to query each reserve's aToken separately
-        // This would require additional contract calls
+        // Note: For V2, we might need to go deeper here for aToken
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
@@ -269,20 +260,5 @@ export class AAVEDiscovery {
     }
 
     return tokens
-  }
-
-  private deduplicateTokens(tokens: TokenInfo[]): TokenInfo[] {
-    const seen = new Set<string>()
-    const unique: TokenInfo[] = []
-
-    for (const token of tokens) {
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        unique.push(token)
-      }
-    }
-
-    return unique
   }
 }
