@@ -78,8 +78,6 @@ const SUGAR_ORACLE_ABI = parseAbi([
   'function getManyRatesWithConnectors(uint8 length, address[] connectors) view returns (uint256[])',
 ])
 
-const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)'])
-
 export class VelodromeFetcher {
   private fetchingInProgress = new Map<number, Promise<Map<string, Price>>>()
 
@@ -163,7 +161,7 @@ export class VelodromeFetcher {
         10: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // Optimism
         8453: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // Base
       }
-      const usdcAddress = usdcAddresses[chainId]?.toLowerCase()
+      const usdcAddress = usdcAddresses[chainId as keyof typeof usdcAddresses]?.toLowerCase()
 
       // Sugar Oracle expects uint8 for length, so we need to limit to 255 tokens
       const maxTokensPerCall = 10 // Very small batches to ensure success
