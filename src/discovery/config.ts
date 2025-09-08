@@ -47,7 +47,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Optimism
   10: {
     chainId: 10,
-    veloSugarAddress: '0xb8A82F0334E43C2Eb0AB5d799036965F7bf07Ba8', // LP Sugar v3
+    veloSugarAddress: '0x3e532BC1998584fe18e357B5187897ad0110ED3A', // LP Sugar v3
     yearnRegistryAddress: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     supportedServices: [
@@ -158,7 +158,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
   // Base
   8453: {
     chainId: 8453,
-    veloSugarAddress: '0x68c19e13618C41158fE4bAba1B8fb3A9c74bDb0A', // LP Sugar v3
+    veloSugarAddress: '0xa7638d351040e2adce3eca81b07132c5df4b99bd', // LP Sugar v3
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     supportedServices: [
       'yearn',
