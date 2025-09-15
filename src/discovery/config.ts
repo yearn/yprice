@@ -214,50 +214,17 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       '0x912CE59144191C1204E64559FE8253a0e49E6548', // ARB
     ],
   },
-  // BSC
-  56: {
-    chainId: 56,
-    supportedServices: ['tokenlist', 'pendle'],
-    supportedPriceFetchers: ['defillama', 'pendle'],
-    baseTokens: [
-      '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
-      '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
-      '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', // USDC
-      '0x55d398326f99059fF775485246999027B3197955', // USDT
-      '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', // DAI
-      '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', // ETH
-    ],
-  },
-  // Avalanche C-Chain
-  43114: {
-    chainId: 43114,
-    supportedServices: ['tokenlist'],
-    supportedPriceFetchers: ['defillama'],
-    baseTokens: [
-      '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', // WAVAX
-      '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // USDC
-      '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', // USDT
-      '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70', // DAI
-      '0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB', // WETH.e
-      '0x50b7545627a5162F82A992c33b87aDc75187B218', // WBTC.e
-    ],
-  },
-  // Sonic (formerly Fantom Sonic)
-  146: {
-    chainId: 146,
-    supportedServices: ['yearn'],
-    supportedPriceFetchers: ['yearn-vault'],
-    baseTokens: [
-      // Add native and common tokens when available
-    ],
-  },
   // Katana
   747474: {
     chainId: 747474,
     supportedServices: ['yearn'],
     supportedPriceFetchers: ['defillama', 'yearn-vault'],
     baseTokens: [
-      // Add native and common tokens when available
+        "0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62", // WETH
+       "0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36", // USDC
+        "0x2DCa96907fde857dd3D816880A0df407eeB2D2F2", // USDT
+        "0x62D6A123E8D19d06d68cf0d2294F9A3A0362c6b3", // USDS
+        "0x0913DA6Da4b42f538B445599b46Bb4622342Cf52", // WBTC
     ],
   },
 }

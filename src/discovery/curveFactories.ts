@@ -28,13 +28,6 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'twocrypto-ng': '0x4A32De8c248533C28904b24B4cFCFE18E9F2ad01',
     tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
   },
-  250: {
-    // Fantom
-    stable: '0x686d67265703D1f124c45E33d47d794c566889Ba',
-    'stable-ng': '0xe61Fb97Ef6eBFBa12B36Ffd7be785c1F5A2DE66b',
-    'twocrypto-ng': '0x4fb93D7d320E8A263F22f62C2059dFC2A8bCbC4c',
-    tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-  },
   42161: {
     // Arbitrum
     stable: '0xb17b674D9c5CB2e441F8e196a2f048A81355d031',
@@ -55,21 +48,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'stable-ng': '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',
     'twocrypto-ng': '0xc9Fe0C63Af9A39402e8a5514f9c43Af0322b665F',
     tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-  },
-  56: {
-    // BSC
-    stable: '0xd7D147c6Bb90A718c3De8C0568F9B560C79fa416',
-    'stable-ng': '0xd6681e74eEA20d196c15038C580f721EF2aB6320',
-    'twocrypto-ng': '0x98EE851a00abeE0d95D08cF4CA2BdCE32aeaAF7F',
-    tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-  },
-  43114: {
-    // Avalanche
-    stable: '0xb17b674D9c5CB2e441F8e196a2f048A81355d031',
-    'stable-ng': '0x1764ee18e8B3ccA4787249Ceb249356192594585',
-    'twocrypto-ng': '0x4A32De8c248533C28904b24B4cFCFE18E9F2ad01',
-    tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-  },
+  }
 }
 
 const FACTORY_ABI = parseAbi([

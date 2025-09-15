@@ -11,7 +11,6 @@ const BALANCER_SUBGRAPHS: Record<number, string> = {
   10: 'https://api.studio.thegraph.com/query/75376/balancer-optimism-v2/version/latest',
   100: 'https://api.studio.thegraph.com/query/75376/balancer-gnosis-chain-v2/version/latest',
   8453: 'https://api.studio.thegraph.com/query/24660/balancer-base-v2/version/latest',
-  43114: 'https://api.studio.thegraph.com/query/75376/balancer-avalanche-v2/version/latest',
 }
 
 // Balancer API for more comprehensive data
@@ -166,7 +165,6 @@ export class BalancerDiscovery implements Discovery {
         10: 'OPTIMISM',
         100: 'GNOSIS',
         8453: 'BASE',
-        43114: 'AVALANCHE',
       }
 
       const network = networkMap[this.chainId]

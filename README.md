@@ -25,29 +25,27 @@ A high-performance TypeScript pricing service that aggregates token prices from 
 
 ### Environment Variables
 
-See a `.example.env` file in the root directory:
+See the `.env.example` file in the root directory:
 
 ```env
-# API Keys (optional but recommended)
-DEFILLAMA_API_KEY=your_defillama_api_key
+RPC_URI_FOR_1=
+RPC_URI_FOR_10=
+RPC_URI_FOR_100=
+RPC_URI_FOR_137=
+RPC_URI_FOR_146=
+RPC_URI_FOR_250=
+RPC_URI_FOR_8453=
+RPC_URI_FOR_42161=
+RPC_URI_FOR_747474=
 
-# RPC Endpoints (required)
-RPC_URL_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/your_key
-RPC_URL_OPTIMISM=https://opt-mainnet.g.alchemy.com/v2/your_key
-RPC_URL_POLYGON=https://polygon-mainnet.g.alchemy.com/v2/your_key
-RPC_URL_ARBITRUM=https://arb-mainnet.g.alchemy.com/v2/your_key
-RPC_URL_BASE=https://base-mainnet.g.alchemy.com/v2/your_key
-RPC_URL_FANTOM=https://rpc.ftm.tools/
-RPC_URL_GNOSIS=https://rpc.gnosischain.com/
+# Redis Configuration
+STORAGE_TYPE=redis
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+REDIS_LOAD_BACKUP=false
 
-# Cache Configuration
-CACHE_TTL_SECONDS=60
-REDIS_URL=redis://localhost:6379 # Optional
-
-# Server Configuration
-PORT=8080
-NODE_ENV=production
-LOG_LEVEL=info
+# Logging
+LOG_LEVEL=debug
 ```
 
 ## Development
