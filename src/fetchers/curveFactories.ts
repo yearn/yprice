@@ -78,7 +78,7 @@ export class CurveFactoriesFetcher {
         if (lpAddress && tokenAddresses.has(lpAddress)) {
           // Calculate LP token price from pool data
           if (pool.usdTotal && pool.totalSupply) {
-            const totalSupply = parseFloat(pool.totalSupply)
+            const totalSupply = parseFloat(pool.totalSupply) / 10 ** 18
             if (totalSupply > 0) {
               const priceUsd = pool.usdTotal / totalSupply
 
@@ -95,7 +95,7 @@ export class CurveFactoriesFetcher {
             }
           } else if (pool.virtualPrice) {
             // Fallback to virtual price calculation
-            const virtualPrice = parseFloat(pool.virtualPrice)
+            const virtualPrice = parseFloat(pool.virtualPrice) / 10 ** 18
             const price = BigInt(Math.floor(virtualPrice * 1e6))
 
             if (price > BigInt(0)) {

@@ -5,7 +5,6 @@ import { type Address, parseAbi } from 'viem'
 // Curve LP Token ABI for get_virtual_price
 const CURVE_LP_TOKEN_ABI = parseAbi([
   'function get_virtual_price() view returns (uint256)',
-  'function totalSupply() view returns (uint256)',
   'function decimals() view returns (uint8)',
 ])
 

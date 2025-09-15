@@ -7,7 +7,6 @@ const ERC4626_ABI = parseAbi([
   'function asset() view returns (address)',
   'function convertToAssets(uint256 shares) view returns (uint256)',
   'function totalAssets() view returns (uint256)',
-  'function totalSupply() view returns (uint256)',
   'function decimals() view returns (uint8)',
 ])
 

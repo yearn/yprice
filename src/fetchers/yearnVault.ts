@@ -8,7 +8,6 @@ const YEARN_VAULT_V2_ABI = parseAbi([
   'function token() view returns (address)',
   'function decimals() view returns (uint8)',
   'function totalAssets() view returns (uint256)',
-  'function totalSupply() view returns (uint256)',
 ])
 
 // Yearn Vault V3 ABI (ERC4626 compliant)

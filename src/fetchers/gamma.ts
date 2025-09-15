@@ -80,7 +80,7 @@ export class GammaFetcher {
         if (tokenAddresses.has(lpAddress)) {
           // Calculate LP token price from TVL and total supply
           const tvlUSD = parseFloat(hypervisor.tvlUSD || '0')
-          const totalSupply = parseFloat(hypervisor.totalSupply || '0')
+          const totalSupply = parseFloat(hypervisor.totalSupply || '0') / 10 ** 18
 
           if (tvlUSD > 0 && totalSupply > 0) {
             // Price per LP token = TVL / Total Supply
