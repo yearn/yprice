@@ -4,6 +4,7 @@ import { CompoundDiscovery } from 'discovery/compoundDiscovery'
 import { DISCOVERY_CONFIGS } from 'discovery/config'
 import { CurveDiscovery } from 'discovery/curveDiscovery'
 import { CurveFactoriesDiscovery } from 'discovery/curveFactories'
+import { CurveRegistriesDiscovery } from 'discovery/curveRegistries'
 import { GammaDiscovery } from 'discovery/gammaDiscovery'
 import { GenericVaultDiscovery } from 'discovery/genericVaultDiscovery'
 import { PendleDiscovery } from 'discovery/pendleDiscovery'
@@ -204,6 +205,18 @@ export class TokenDiscoveryService {
             new CurveFactoriesDiscovery(chainId, rpcUrl).discoverTokens(),
             60000, // 60s for heavy on-chain discovery
             'Curve Factories',
+          ),
+        )
+      }
+
+      // 3b. Curve Registries (main, crypto, crvUSD)
+      if (shouldRunService('curve-registries') && rpcUrl) {
+        sourceNames.push('Curve Registries')
+        discoveryPromises.push(
+          withTimeout(
+            new CurveRegistriesDiscovery(chainId, rpcUrl).discoverTokens(),
+            90000, // 90s for comprehensive registry discovery
+            'Curve Registries',
           ),
         )
       }

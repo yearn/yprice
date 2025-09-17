@@ -49,6 +49,7 @@ export type DiscoverySource =
   | 'yearn'
   | 'curve-api'
   | 'curve-factories'
+  | 'curve-registries'
   | 'velodrome'
   | 'tokenlist'
   | 'gamma'
