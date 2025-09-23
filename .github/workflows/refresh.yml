@@ -1,0 +1,43 @@
+name: Refresh Pricing Data
+
+on:
+  schedule:
+    - cron: '0,30 * * * *'  # Every 30 minutes on the hour and half hour
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Build project
+      run: bun run build
+      
+    - name: Run refresh
+      run: bun run refresh
+      env:
+        RPC_URI_FOR_1: ${{ secrets.RPC_URI_FOR_1 }}
+        RPC_URI_FOR_10: ${{ secrets.RPC_URI_FOR_10 }}
+        RPC_URI_FOR_100: ${{ secrets.RPC_URI_FOR_100 }}
+        RPC_URI_FOR_137: ${{ secrets.RPC_URI_FOR_137 }}
+        RPC_URI_FOR_146: ${{ secrets.RPC_URI_FOR_146 }}
+        RPC_URI_FOR_250: ${{ secrets.RPC_URI_FOR_250 }}
+        RPC_URI_FOR_8453: ${{ secrets.RPC_URI_FOR_8453 }}
+        RPC_URI_FOR_42161: ${{ secrets.RPC_URI_FOR_42161 }}
+        RPC_URI_FOR_747474: ${{ secrets.RPC_URI_FOR_747474 }}
+        STORAGE_TYPE: redis
+        UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+        UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        CACHE_TTL_SECONDS=3600
+        LOG_LEVEL: info
