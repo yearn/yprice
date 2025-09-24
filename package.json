@@ -6,7 +6,6 @@
     "build": "tsc && tsc-alias",
     "refresh": "tsx src/refresh.ts",
     "refresh-route": "tsx src/refresh-route.ts",
-    "dev:server": "bun run api/devserver.ts",
     "vercel": "vercel dev",
     "deploy": "vercel --prod",
     "test": "jest",
@@ -14,7 +13,8 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "format": "biome format --write src/",
-    "check": "biome check src/"
+    "check": "biome check src/",
+    "analyze": "tsx scripts/analyze-sources.ts"
   },
   "keywords": [
     "yearn",
@@ -53,6 +53,6 @@
     "vercel": "^46.1.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }

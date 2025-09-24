@@ -1,6 +1,6 @@
+import { writeFileSync } from 'node:fs'
 import { chainDiscoveryServices, chainFetchers } from 'discovery/config'
 import dotenv from 'dotenv'
-import { writeFileSync } from 'fs'
 import { SUPPORTED_CHAINS } from 'models/types'
 import priceService from 'services/priceService'
 import { getStorage, initializeStorage, StorageType, StorageWrapper } from 'storage/index'
