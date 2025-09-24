@@ -14,7 +14,8 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "format": "biome format --write src/",
-    "check": "biome check src/"
+    "check": "biome check src/",
+    "analyze": "tsx scripts/analyze-sources.ts"
   },
   "keywords": [
     "yearn",
