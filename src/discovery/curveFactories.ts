@@ -48,7 +48,7 @@ const CURVE_FACTORIES: Record<number, Record<string, string>> = {
     'stable-ng': '0x6A8cbed756804B16E05E741eDaBd5cB544AE21bf',
     'twocrypto-ng': '0xc9Fe0C63Af9A39402e8a5514f9c43Af0322b665F',
     tricrypto: '0x0c0e5f2fF0ff18a3be9b835635039256dC4B4963',
-  }
+  },
 }
 
 const FACTORY_ABI = parseAbi([

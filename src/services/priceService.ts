@@ -273,17 +273,17 @@ export class PriceService {
       // Discover tokens for the specific chain
       const tokensByChain = await tokenDiscoveryService.discoverAllTokens(false)
       const tokens = tokensByChain.get(chainId)
-      
+
       if (!tokens || tokens.length === 0) {
         logger.warn(`No tokens found for chain ${chainId}`)
         return
       }
 
       logger.info(`📈 Processing ${tokens.length} tokens for chain ${chainId}`)
-      
+
       // Use the existing fetchAndStorePrices method
       const prices = await this.fetchAndStorePrices(chainId, tokens)
-      
+
       logger.info(`✅ Chain ${chainId}: Found prices for ${prices.size} tokens`)
     } catch (error) {
       logger.error(`❌ Price refresh failed for chain ${chainId}:`, error)
@@ -292,23 +292,34 @@ export class PriceService {
   }
 
   async fetchPricesForChainAndDiscovery(chainId: number, discoveryService: string): Promise<void> {
-    logger.info(`🔄 Starting price refresh for chain ${chainId} with discovery service: ${discoveryService}...`)
+    logger.info(
+      `🔄 Starting price refresh for chain ${chainId} with discovery service: ${discoveryService}...`,
+    )
     try {
       // Discover tokens for the specific chain and service
-      const tokensByChain = await tokenDiscoveryService.discoverTokensForService(chainId, discoveryService)
+      const tokensByChain = await tokenDiscoveryService.discoverTokensForService(
+        chainId,
+        discoveryService,
+      )
       const tokens = tokensByChain.get(chainId)
-      
+
       if (!tokens || tokens.length === 0) {
-        logger.warn(`No tokens found for chain ${chainId} with discovery service ${discoveryService}`)
+        logger.warn(
+          `No tokens found for chain ${chainId} with discovery service ${discoveryService}`,
+        )
         return
       }
 
-      logger.info(`📈 Processing ${tokens.length} tokens for chain ${chainId} from ${discoveryService}`)
-      
+      logger.info(
+        `📈 Processing ${tokens.length} tokens for chain ${chainId} from ${discoveryService}`,
+      )
+
       // Use the existing fetchAndStorePrices method
       const prices = await this.fetchAndStorePrices(chainId, tokens)
-      
-      logger.info(`✅ Chain ${chainId} with ${discoveryService}: Found prices for ${prices.size} tokens`)
+
+      logger.info(
+        `✅ Chain ${chainId} with ${discoveryService}: Found prices for ${prices.size} tokens`,
+      )
     } catch (error) {
       logger.error(`❌ Price refresh failed for chain ${chainId} with ${discoveryService}:`, error)
       throw error
@@ -321,22 +332,24 @@ export class PriceService {
       // First discover all tokens for this chain
       const tokensByChain = await tokenDiscoveryService.discoverAllTokens(false)
       const tokens = tokensByChain.get(chainId)
-      
+
       if (!tokens || tokens.length === 0) {
         logger.warn(`No tokens found for chain ${chainId}`)
         return
       }
 
-      logger.info(`📈 Processing ${tokens.length} tokens for chain ${chainId} with fetcher ${fetcher}`)
-      
+      logger.info(
+        `📈 Processing ${tokens.length} tokens for chain ${chainId} with fetcher ${fetcher}`,
+      )
+
       // Create a custom fetcher orchestrator that only uses the specified fetcher
       const customFetcher = new PriceFetcherOrchestrator()
       customFetcher.setFetcherFilter(fetcher)
-      
+
       // Fetch prices using only the specified fetcher
       const prices = await customFetcher.fetchPrices(chainId, tokens)
       const storage = new StorageWrapper(getStorage())
-      
+
       // Handle WETH/ETH price mapping
       const wethAddress = WETH_ADDRESSES[chainId]
       if (wethAddress) {
@@ -348,12 +361,12 @@ export class PriceService {
           })
         }
       }
-      
+
       const pricesArray = Array.from(prices.values())
       if (pricesArray.length > 0) {
         await storage.storePrices(chainId, pricesArray)
       }
-      
+
       logger.info(`✅ Chain ${chainId} with ${fetcher}: Found prices for ${prices.size} tokens`)
     } catch (error) {
       logger.error(`❌ Price refresh failed for chain ${chainId} with ${fetcher}:`, error)

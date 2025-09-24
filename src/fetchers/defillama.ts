@@ -4,7 +4,6 @@ import { ERC20Token, LlamaPrice, Price, PriceSource } from 'models/index'
 import pLimit from 'p-limit'
 import { addressEquals, chunk, logger, parseUnits } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
-import { zeroAddress } from 'viem'
 
 const LLAMA_CHAIN_NAMES: Record<number, string> = {
   1: 'ethereum',

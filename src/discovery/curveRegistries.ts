@@ -137,9 +137,7 @@ export class CurveRegistriesDiscovery implements Discovery {
         functionName: 'pool_count',
       })
 
-      logger.debug(
-        `Chain ${this.chainId}: ${registryType} registry has ${poolCount} pools`,
-      )
+      logger.debug(`Chain ${this.chainId}: ${registryType} registry has ${poolCount} pools`)
 
       // Batch fetch pool addresses
       const poolListContracts = []
@@ -304,9 +302,7 @@ export class CurveRegistriesDiscovery implements Discovery {
         functionName: 'pool_count',
       })
 
-      logger.debug(
-        `Chain ${this.chainId}: ${registryType} registry has ${poolCount} pools`,
-      )
+      logger.debug(`Chain ${this.chainId}: ${registryType} registry has ${poolCount} pools`)
 
       // Batch fetch pool addresses
       const poolListContracts = []

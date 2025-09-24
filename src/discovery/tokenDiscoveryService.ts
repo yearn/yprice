@@ -101,16 +101,19 @@ export class TokenDiscoveryService {
     return this.tokenCache
   }
 
-  async discoverTokensForService(chainId: number, serviceName: string): Promise<Map<number, ERC20Token[]>> {
+  async discoverTokensForService(
+    chainId: number,
+    serviceName: string,
+  ): Promise<Map<number, ERC20Token[]>> {
     logger.info(`🔍 Starting token discovery for chain ${chainId} with service ${serviceName}...`)
     this.discoveredTokens.clear()
-    
+
     const config = DISCOVERY_CONFIGS[chainId]
     if (!config) {
       logger.error(`No configuration found for chain ${chainId}`)
       return new Map()
     }
-    
+
     try {
       await this.discoverChainTokens(chainId, config, serviceName)
     } catch (error) {
@@ -125,21 +128,27 @@ export class TokenDiscoveryService {
         this.discoveredTokens.set(chainId, baseTokens)
       }
     }
-    
+
     // Convert discovered tokens to ERC20Token format
     const result = new Map<number, ERC20Token[]>()
     const tokens = this.discoveredTokens.get(chainId)
-    
+
     if (tokens) {
       const erc20Tokens = this.convertToERC20Tokens(chainId, tokens)
       result.set(chainId, erc20Tokens)
-      logger.info(`✅ Discovery complete: ${erc20Tokens.length} tokens found for chain ${chainId} with ${serviceName}`)
+      logger.info(
+        `✅ Discovery complete: ${erc20Tokens.length} tokens found for chain ${chainId} with ${serviceName}`,
+      )
     }
-    
+
     return result
   }
 
-  private async discoverChainTokens(chainId: number, config: any, serviceFilter?: string): Promise<void> {
+  private async discoverChainTokens(
+    chainId: number,
+    config: any,
+    serviceFilter?: string,
+  ): Promise<void> {
     const startTime = Date.now()
 
     try {

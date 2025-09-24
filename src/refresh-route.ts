@@ -1,10 +1,10 @@
-import dotenv from 'dotenv'
-import priceService from 'services/priceService'
-import { initializeStorage, StorageType, getStorage, StorageWrapper } from 'storage/index'
-import { logger } from 'utils/index'
-import { SUPPORTED_CHAINS } from 'models/types'
 import { chainDiscoveryServices, chainFetchers } from 'discovery/config'
+import dotenv from 'dotenv'
 import { writeFileSync } from 'fs'
+import { SUPPORTED_CHAINS } from 'models/types'
+import priceService from 'services/priceService'
+import { getStorage, initializeStorage, StorageType, StorageWrapper } from 'storage/index'
+import { logger } from 'utils/index'
 
 dotenv.config()
 
@@ -14,11 +14,11 @@ async function refreshRoute() {
     const args = process.argv.slice(2)
     const exportFlag = args.includes('--export') || args.includes('-e')
     const csvFlag = args.includes('--csv') || args.includes('-c')
-    
+
     // Remove flags from args to get positional arguments
-    const positionalArgs = args.filter(arg => !arg.startsWith('-'))
+    const positionalArgs = args.filter((arg) => !arg.startsWith('-'))
     const [chainIdArg, route] = positionalArgs
-    
+
     if (!chainIdArg || !route) {
       console.log('Usage: refresh-route <chainId> <route> [options]')
       console.log('Options:')
@@ -33,21 +33,23 @@ async function refreshRoute() {
     }
 
     const chainId = parseInt(chainIdArg, 10)
-    
+
     // Validate chain ID
-    const supportedChainIds = Object.values(SUPPORTED_CHAINS).map(chain => chain.id)
+    const supportedChainIds = Object.values(SUPPORTED_CHAINS).map((chain) => chain.id)
     if (!supportedChainIds.includes(chainId)) {
-      logger.error(`Chain ${chainId} is not supported. Supported chains: ${supportedChainIds.join(', ')}`)
+      logger.error(
+        `Chain ${chainId} is not supported. Supported chains: ${supportedChainIds.join(', ')}`,
+      )
       process.exit(1)
     }
 
     // Validate route exists for this chain
     const discoveryServices = chainDiscoveryServices[chainId] || []
     const fetchers = chainFetchers[chainId] || []
-    
+
     const isDiscoveryService = discoveryServices.includes(route)
     const isFetcher = fetchers.includes(route)
-    
+
     if (!isDiscoveryService && !isFetcher) {
       logger.error(`Route '${route}' is not available for chain ${chainId}`)
       logger.info(`Available discovery services: ${discoveryServices.join(', ')}`)
@@ -63,7 +65,7 @@ async function refreshRoute() {
     initializeStorage(storageType, cacheTTL, backupDir)
 
     logger.info(`🚀 Starting refresh for chain ${chainId} with route '${route}'...`)
-    
+
     // Call the appropriate service method based on route type
     if (isDiscoveryService) {
       logger.info(`Running discovery service: ${route}`)
@@ -76,40 +78,40 @@ async function refreshRoute() {
     logger.info(
       `💾 Prices have been saved to ${storageType === 'redis' ? 'Redis' : 'data/prices/'}`,
     )
-    
+
     // Export results if requested
     if (exportFlag || csvFlag) {
       const storage = new StorageWrapper(getStorage())
       const { asSlice } = await storage.listPrices(chainId)
-      
+
       if (asSlice.length === 0) {
         logger.warn('No prices found to export')
       } else {
         const timestamp = new Date().toISOString().split('T')[0]
         const baseFilename = `refresh-route-${chainId}-${route}-${timestamp}`
-        
+
         if (csvFlag) {
           // Export as CSV
           const headers = ['address', 'price_usd', 'price_wei', 'source', 'chain', 'route']
-          const rows = asSlice.map(price => {
+          const rows = asSlice.map((price) => {
             // Convert bigint price to USD (prices are stored with 6 decimals)
             const priceUsd = Number(price.price) / 1e6
-            
+
             return [
               price.address,
               priceUsd.toFixed(6),
               price.price.toString(),
               price.source,
               chainId.toString(),
-              route
+              route,
             ]
           })
-          
+
           const csvContent = [
             headers.join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
           ].join('\n')
-          
+
           const csvFilename = `${baseFilename}.csv`
           writeFileSync(csvFilename, csvContent)
           logger.info(`📄 Results exported to ${csvFilename}`)
@@ -120,23 +122,23 @@ async function refreshRoute() {
               chain: chainId,
               route: route,
               timestamp: new Date().toISOString(),
-              totalPrices: asSlice.length
+              totalPrices: asSlice.length,
             },
-            prices: asSlice.map(price => ({
+            prices: asSlice.map((price) => ({
               address: price.address,
               priceUsd: Number(price.price) / 1e6,
               priceWei: price.price.toString(),
-              source: price.source
-            }))
+              source: price.source,
+            })),
           }
-          
+
           const jsonFilename = `${baseFilename}.json`
           writeFileSync(jsonFilename, JSON.stringify(jsonData, null, 2))
           logger.info(`📄 Results exported to ${jsonFilename}`)
         }
       }
     }
-    
+
     process.exit(0)
   } catch (error) {
     logger.error('Failed to refresh prices:', error)
