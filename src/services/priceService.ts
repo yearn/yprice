@@ -266,6 +266,30 @@ export class PriceService {
       throw error
     }
   }
+
+  async fetchPricesForChain(chainId: number): Promise<void> {
+    logger.info(`🔄 Starting price refresh for chain ${chainId}...`)
+    try {
+      // Discover tokens for the specific chain
+      const tokensByChain = await tokenDiscoveryService.discoverAllTokens(false)
+      const tokens = tokensByChain.get(chainId)
+      
+      if (!tokens || tokens.length === 0) {
+        logger.warn(`No tokens found for chain ${chainId}`)
+        return
+      }
+
+      logger.info(`📈 Processing ${tokens.length} tokens for chain ${chainId}`)
+      
+      // Use the existing fetchAndStorePrices method
+      const prices = await this.fetchAndStorePrices(chainId, tokens)
+      
+      logger.info(`✅ Chain ${chainId}: Found prices for ${prices.size} tokens`)
+    } catch (error) {
+      logger.error(`❌ Price refresh failed for chain ${chainId}:`, error)
+      throw error
+    }
+  }
 }
 
 export default new PriceService()

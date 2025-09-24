@@ -51,13 +51,31 @@ LOG_LEVEL=debug
 ## Development
 
 ```bash
-bun run refresh     # Run token discovery and price refresh
-bun vercel          # Run local Vercel development server
+bun run refresh           # Run token discovery and price refresh for all chains
+bun run refresh <chainId> # Run token discovery and price refresh for a specific chain
+bun vercel                # Run local Vercel development server
 
-bun run lint        # Check code style
-bun run lint:fix    # Fix code style issues
-bun run format      # Format code with Biome
+bun run lint              # Check code style
+bun run lint:fix          # Fix code style issues
+bun run format            # Format code with Biome
 ```
+
+### Refreshing Prices
+
+You can refresh prices for all chains or a specific chain:
+
+```bash
+# Refresh all chains
+bun run refresh
+
+# Refresh only Ethereum (chain 1)
+bun run refresh 1
+
+# Refresh only Optimism (chain 10)
+bun run refresh 10
+```
+
+This is useful for testing and debugging specific chain configurations without waiting for all chains to complete.
 
 ### Vercel Deployment
 

@@ -14,11 +14,17 @@ async function refresh() {
 
     initializeStorage(storageType, cacheTTL, backupDir)
 
-    logger.info('🚀 Starting manual price refresh...')
-    logger.info('This may take several minutes to complete all chains.')
+    // Get chain ID from command line argument
+    const chainId = process.argv[2] ? parseInt(process.argv[2], 10) : undefined
 
-    // Run the price fetch once
-    await priceService.fetchOnce()
+    if (chainId) {
+      logger.info(`🚀 Starting price refresh for chain ${chainId}...`)
+      await priceService.fetchPricesForChain(chainId)
+    } else {
+      logger.info('🚀 Starting manual price refresh for all chains...')
+      logger.info('This may take several minutes to complete all chains.')
+      await priceService.fetchOnce()
+    }
 
     logger.info(
       `💾 Prices have been saved to ${storageType === 'redis' ? 'Redis' : 'data/prices/'}`,

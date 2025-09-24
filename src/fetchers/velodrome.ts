@@ -153,9 +153,10 @@ export class VelodromeFetcher {
       logger.debug(
         `[Velodrome] Processing ${regularTokens.length} regular tokens and ${lpTokens.length} LP tokens`,
       )
+      
 
-      // Get prices for regular tokens from Sugar Oracle
-      const tokenAddresses = regularTokens.map((t) => t.address.toLowerCase())
+      // Get prices for ALL tokens from Sugar Oracle (including LP tokens)
+      const tokenAddresses = tokensNeedingPrices.map((t) => t.address.toLowerCase())
 
       const usdcAddresses = {
         10: '0x7f5c764cbc14f9669b88837ca1490cca17c31607', // Optimism
@@ -212,6 +213,8 @@ export class VelodromeFetcher {
           for (let i = 0; i < batch.length; i++) {
             const address = batch[i]
             const price = tokenPrices[i]
+            
+            
             if (address && price !== undefined && price > BigInt(0)) {
               batchResults.set(address, price)
             }
@@ -275,12 +278,39 @@ export class VelodromeFetcher {
         if (oraclePrice > BigInt(0)) {
           // Oracle returns price in 18 decimals, we use 6
           const price = (oraclePrice * BigInt(10 ** 6)) / BigInt(10 ** 18)
+          
           if (price > BigInt(0)) {
             priceMap.set(address, {
               address: address,
               price: price,
               source: chainId === 10 ? 'velodrome-oracle' : 'aerodrome-oracle',
             })
+          }
+        }
+      }
+
+      // Process LP tokens
+      if (lpTokens.length > 0) {
+        logger.debug(`[Velodrome] Warning: ${lpTokens.length} LP tokens not processed - need LP-specific logic`)
+        // TODO: LP tokens may need different handling - possibly through pool contracts
+        // For now, we'll try to get them through the Sugar Oracle as well
+        const lpAddresses = lpTokens.map(t => t.address.toLowerCase())
+        
+        for (const lpToken of lpTokens) {
+          const lpAddress = lpToken.address.toLowerCase()
+          if (allTokenPrices.has(lpAddress)) {
+            const oraclePrice = allTokenPrices.get(lpAddress)!
+            const price = (oraclePrice * BigInt(10 ** 6)) / BigInt(10 ** 18)
+            
+            logger.debug(`[Velodrome] Found LP token price: ${lpToken.symbol} = $${(Number(price) / 1e6).toFixed(6)}`)
+            
+            if (price > BigInt(0)) {
+              priceMap.set(lpAddress, {
+                address: lpAddress,
+                price: price,
+                source: chainId === 10 ? 'velodrome-oracle' : 'aerodrome-oracle',
+              })
+            }
           }
         }
       }
