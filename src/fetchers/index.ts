@@ -33,6 +33,7 @@ export class PriceFetcherOrchestrator {
   // private lensOracle = new LensOracleFetcher()
   private erc4626 = new ERC4626Fetcher()
   private yearnVault = new YearnVaultFetcher()
+  private fetcherFilter?: string
 
   async fetchPrices(
     chainId: number,
@@ -49,9 +50,13 @@ export class PriceFetcherOrchestrator {
     const supportedFetchers = config?.supportedPriceFetchers || []
 
     // If no supported fetchers configured, use default behavior
-    const shouldRunFetcher = (fetcher: PriceFetcher): boolean => {
+    const shouldRunFetcher = (fetcher: PriceFetcher | string): boolean => {
+      // If a fetcher filter is set, only run that fetcher
+      if (this.fetcherFilter) {
+        return fetcher === this.fetcherFilter
+      }
       if (supportedFetchers.length === 0) return true
-      return supportedFetchers.includes(fetcher)
+      return supportedFetchers.includes(fetcher as PriceFetcher)
     }
 
     // Initialize with existing prices if provided
@@ -227,6 +232,10 @@ export class PriceFetcherOrchestrator {
     }
 
     return priceMap
+  }
+
+  setFetcherFilter(fetcherName: string): void {
+    this.fetcherFilter = fetcherName
   }
 }
 

@@ -241,3 +241,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     ],
   },
 }
+
+// Helper exports for chain-specific services and fetchers
+export const chainDiscoveryServices: Record<number, string[]> = {}
+export const chainFetchers: Record<number, string[]> = {}
+
+// Populate the helper exports
+Object.entries(DISCOVERY_CONFIGS).forEach(([chainId, config]) => {
+  const id = Number(chainId)
+  chainDiscoveryServices[id] = config.supportedServices || []
+  chainFetchers[id] = config.supportedPriceFetchers || []
+})

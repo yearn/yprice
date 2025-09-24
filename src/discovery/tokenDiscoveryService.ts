@@ -101,7 +101,45 @@ export class TokenDiscoveryService {
     return this.tokenCache
   }
 
-  private async discoverChainTokens(chainId: number, config: any): Promise<void> {
+  async discoverTokensForService(chainId: number, serviceName: string): Promise<Map<number, ERC20Token[]>> {
+    logger.info(`🔍 Starting token discovery for chain ${chainId} with service ${serviceName}...`)
+    this.discoveredTokens.clear()
+    
+    const config = DISCOVERY_CONFIGS[chainId]
+    if (!config) {
+      logger.error(`No configuration found for chain ${chainId}`)
+      return new Map()
+    }
+    
+    try {
+      await this.discoverChainTokens(chainId, config, serviceName)
+    } catch (error) {
+      logger.error(`Chain ${chainId} discovery with service ${serviceName} failed:`, error)
+      // Ensure at least base tokens are available
+      if (config.baseTokens && config.baseTokens.length > 0) {
+        const baseTokens: TokenInfo[] = config.baseTokens.map((address) => ({
+          address: address.toLowerCase(),
+          chainId,
+          source: 'configured',
+        }))
+        this.discoveredTokens.set(chainId, baseTokens)
+      }
+    }
+    
+    // Convert discovered tokens to ERC20Token format
+    const result = new Map<number, ERC20Token[]>()
+    const tokens = this.discoveredTokens.get(chainId)
+    
+    if (tokens) {
+      const erc20Tokens = this.convertToERC20Tokens(chainId, tokens)
+      result.set(chainId, erc20Tokens)
+      logger.info(`✅ Discovery complete: ${erc20Tokens.length} tokens found for chain ${chainId} with ${serviceName}`)
+    }
+    
+    return result
+  }
+
+  private async discoverChainTokens(chainId: number, config: any, serviceFilter?: string): Promise<void> {
     const startTime = Date.now()
 
     try {
@@ -164,6 +202,10 @@ export class TokenDiscoveryService {
 
       // If no supported services defined, run all services (backward compatibility)
       const shouldRunService = (service: string): boolean => {
+        // If a service filter is provided, only run that service
+        if (serviceFilter) {
+          return service === serviceFilter
+        }
         if (supportedServices.length === 0) return true
         return supportedServices.includes(service as any)
       }

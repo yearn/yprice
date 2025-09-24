@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc && tsc-alias",
     "refresh": "tsx src/refresh.ts",
+    "refresh-route": "tsx src/refresh-route.ts",
     "dev:server": "bun run api/devserver.ts",
     "vercel": "vercel dev",
     "deploy": "vercel --prod",
