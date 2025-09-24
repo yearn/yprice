@@ -14,8 +14,8 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'tokenlist',
       'pendle',
       'aave',
@@ -26,7 +26,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     ],
     supportedPriceFetchers: [
       'defillama',
-      'curve-factories',
+      // 'curve-factories',
       'pendle',
       'curve-amm',
       'erc4626',
@@ -57,14 +57,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'tokenlist',
       'aave',
       'uniswap',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'balancer',
       'generic-vaults',
     ],
     supportedPriceFetchers: [
       'defillama',
-      'curve-factories',
+      // 'curve-factories',
       'velodrome',
       'gamma',
       'erc4626',
@@ -87,8 +87,8 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'yearn',
       'tokenlist',
       'aave',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'balancer',
       'generic-vaults',
     ],
@@ -110,15 +110,21 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'tokenlist',
       'aave',
       'uniswap',
       'balancer',
       'generic-vaults',
     ],
-    supportedPriceFetchers: ['defillama', 'curve-factories', 'curve-amm', 'erc4626', 'yearn-vault'],
+    supportedPriceFetchers: [
+      'defillama',
+      // 'curve-factories',
+      'curve-amm',
+      'erc4626',
+      'yearn-vault',
+    ],
     baseTokens: [
       '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
       '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
@@ -137,8 +143,8 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'tokenlist',
       'uniswap',
       'balancer',
@@ -146,7 +152,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     ],
     supportedPriceFetchers: [
       'defillama',
-      'curve-factories',
+      // 'curve-factories',
       'gamma',
       'curve-amm',
       'erc4626',
@@ -171,8 +177,8 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'tokenlist',
       'aave',
       'uniswap',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'balancer',
       'generic-vaults',
     ],
@@ -194,8 +200,8 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      'curve-factories',
-      'curve-registries',
+      // 'curve-factories',
+      // 'curve-registries',
       'tokenlist',
       'pendle',
       'aave',
@@ -205,7 +211,7 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     ],
     supportedPriceFetchers: [
       'defillama',
-      'curve-factories',
+      // 'curve-factories',
       'pendle',
       'curve-amm',
       'erc4626',
@@ -227,11 +233,11 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: ['yearn'],
     supportedPriceFetchers: ['defillama', 'yearn-vault'],
     baseTokens: [
-        "0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62", // WETH
-       "0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36", // USDC
-        "0x2DCa96907fde857dd3D816880A0df407eeB2D2F2", // USDT
-        "0x62D6A123E8D19d06d68cf0d2294F9A3A0362c6b3", // USDS
-        "0x0913DA6Da4b42f538B445599b46Bb4622342Cf52", // WBTC
+      '0xEE7D8BCFb72bC1880D0Cf19822eB0A2e6577aB62', // WETH
+      '0x203A662b0BD271A6ed5a60EdFbd04bFce608FD36', // USDC
+      '0x2DCa96907fde857dd3D816880A0df407eeB2D2F2', // USDT
+      '0x62D6A123E8D19d06d68cf0d2294F9A3A0362c6b3', // USDS
+      '0x0913DA6Da4b42f538B445599b46Bb4622342Cf52', // WBTC
     ],
   },
 }

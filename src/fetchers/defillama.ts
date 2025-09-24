@@ -26,13 +26,25 @@ const AJNA_TOKENS: Record<number, string> = {
   42161: '0xA98c94d67D9dF259Bee2E7b519dF75aB00E3E2A8',
 }
 
-const KATANA_TOKEN_NAMES_TO_MAINNET: Record<string, string> = {
-  'Vault Bridge WBTC': 'Wrapped BTC',
-  'Vault Bridge USDC': 'USD Coin',
-  'Vault Bridge USDT': 'Tether USD',
-  'Vault Bridge USDS': 'USDS Stablecoin',
-  'Vault Bridge ETH': 'Wrapped Ether',
-  AUSD: 'AUSD',
+const KATANA_TOKEN_TO_MAINNET: Record<string, { name: string; address: string }> = {
+  'Vault Bridge WBTC': {
+    name: 'Wrapped BTC',
+    address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
+  },
+  'Vault Bridge USDC': { name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+  'Vault Bridge USDT': {
+    name: 'Tether USD',
+    address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+  },
+  'Vault Bridge USDS': {
+    name: 'USDS Stablecoin',
+    address: '0xdC035D45d973E3EC169d2276DDab16f1e407384F',
+  },
+  'Vault Bridge ETH': {
+    name: 'Wrapped Ether',
+    address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  },
+  AUSD: { name: 'AUSD', address: '0x00000000efe302beaa2b3e6e1b18d08d69a9012a' },
 }
 
 interface DefiLlamaFetcher {
@@ -199,12 +211,17 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     const mainnetPrices = await this.fetchChunkPrices('ethereum', 1, mainnetTokens)
 
     forEach(tokens, (token) => {
-      const mainnetName = KATANA_TOKEN_NAMES_TO_MAINNET[token.name]
-      if (mainnetName) {
-        const mainnetToken = find(mainnetTokens, (t) => t.name === mainnetName)
+      const mainnetInfo = KATANA_TOKEN_TO_MAINNET[token.name]
+      if (mainnetInfo) {
+        const mainnetToken = find(
+          mainnetTokens,
+          (t) => t.address.toLowerCase() === mainnetInfo.address.toLowerCase(),
+        )
         if (mainnetToken) {
           const price = mainnetPrices.get(mainnetToken.address.toLowerCase())
           if (price) {
+            // Katana uses 18 decimals for all tokens, but we need to return prices in 6 decimals
+            // to match ydaemon format. The price from mainnet is already in 6 decimals.
             prices.set(token.address.toLowerCase(), {
               ...price,
               address: token.address,
@@ -221,12 +238,12 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     return reduce(
       tokens,
       (acc: ERC20Token[], token) => {
-        const mainnetName = KATANA_TOKEN_NAMES_TO_MAINNET[token.name]
-        if (mainnetName) {
+        const mainnetInfo = KATANA_TOKEN_TO_MAINNET[token.name]
+        if (mainnetInfo) {
           acc.push({
-            address: zeroAddress,
+            address: mainnetInfo.address,
             symbol: token.symbol,
-            name: mainnetName,
+            name: mainnetInfo.name,
             decimals: token.decimals,
             chainId: 1,
           })
