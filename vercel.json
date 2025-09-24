@@ -1,28 +1,6 @@
 {
   "buildCommand": "bun run build",
   "outputDirectory": ".",
-  "functions": {
-    "api/prices.ts": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/prices/chain/[chainId].ts": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/prices/tokens/[list].ts": {
-      "memory": 1024,
-      "maxDuration": 30
-    },
-    "api/healthcheck.ts": {
-      "memory": 256,
-      "maxDuration": 10
-    },
-    "api/index.ts": {
-      "memory": 256,
-      "maxDuration": 10
-    }
-  },
   "rewrites": [
     {
       "source": "/prices",
