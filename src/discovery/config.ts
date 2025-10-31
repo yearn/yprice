@@ -14,8 +14,6 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      // 'curve-factories',
-      // 'curve-registries',
       'tokenlist',
       'pendle',
       'aave',
@@ -23,14 +21,16 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'uniswap',
       'balancer',
       'generic-vaults',
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: [
       'defillama',
-      // 'curve-factories',
       'pendle',
       'curve-amm',
       'erc4626',
       'yearn-vault',
+      // 'curve-factories',
     ],
     baseTokens: [
       '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
@@ -53,22 +53,22 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     aaveV3Pool: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
     supportedServices: [
       'yearn',
-      // 'velodrome', // Temporarily disabled due to Sugar contract issues
       'tokenlist',
       'aave',
       'uniswap',
-      // 'curve-factories',
-      // 'curve-registries',
       'balancer',
       'generic-vaults',
+      // 'velodrome',
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: [
       'defillama',
-      // 'curve-factories',
       'velodrome',
       'gamma',
       'erc4626',
       'yearn-vault',
+      // 'curve-factories',
     ],
     baseTokens: [
       '0x4200000000000000000000000000000000000006', // WETH
@@ -87,10 +87,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'yearn',
       'tokenlist',
       'aave',
-      // 'curve-factories',
-      // 'curve-registries',
       'balancer',
       'generic-vaults',
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: ['defillama', 'curve-factories', 'gamma', 'erc4626', 'yearn-vault'],
     baseTokens: [
@@ -110,20 +110,20 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      // 'curve-factories',
-      // 'curve-registries',
       'tokenlist',
-      'aave',
       'uniswap',
       'balancer',
       'generic-vaults',
+      // 'curve-factories',
+      // 'curve-registries',
+      // 'aave',
     ],
     supportedPriceFetchers: [
       'defillama',
-      // 'curve-factories',
       'curve-amm',
       'erc4626',
       'yearn-vault',
+      // 'curve-factories',
     ],
     baseTokens: [
       '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
@@ -143,20 +143,20 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      // 'curve-factories',
-      // 'curve-registries',
       'tokenlist',
       'uniswap',
       'balancer',
       'generic-vaults',
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: [
       'defillama',
-      // 'curve-factories',
       'gamma',
       'curve-amm',
       'erc4626',
       'yearn-vault',
+      // 'curve-factories',
     ],
     baseTokens: [
       '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', // WFTM
@@ -173,14 +173,14 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     aaveV3Pool: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
     supportedServices: [
       'yearn',
-      // 'velodrome', // Temporarily disabled due to Sugar contract issues
       'tokenlist',
       'aave',
       'uniswap',
-      // 'curve-factories',
-      // 'curve-registries',
       'balancer',
       'generic-vaults',
+      // 'velodrome', // Temporarily disabled due to Sugar contract issues
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: ['defillama', 'curve-factories', 'velodrome', 'erc4626', 'yearn-vault'],
     baseTokens: [
@@ -200,22 +200,22 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
     supportedServices: [
       'yearn',
       'curve-api',
-      // 'curve-factories',
-      // 'curve-registries',
       'tokenlist',
       'pendle',
       'aave',
       'uniswap',
       'balancer',
       'generic-vaults',
+      // 'curve-factories',
+      // 'curve-registries',
     ],
     supportedPriceFetchers: [
       'defillama',
-      // 'curve-factories',
       'pendle',
       'curve-amm',
       'erc4626',
       'yearn-vault',
+      // 'curve-factories',
     ],
     baseTokens: [
       '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH

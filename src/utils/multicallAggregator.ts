@@ -1,3 +1,4 @@
+import { MulticallTimeoutError } from 'models/errors'
 import pLimit from 'p-limit'
 import { logger } from 'utils/logger'
 import { getPublicClient } from 'utils/viemClients'
@@ -26,9 +27,19 @@ export class MulticallAggregator {
   private processing: Map<number, boolean> = new Map()
 
   // Configuration
-  private readonly BATCH_SIZE = 500 // Max calls per multicall
+  private readonly BATCH_SIZES: Record<number, number> = {
+    1: 500, // Ethereum
+    10: 1000, // Optimism (cheaper gas)
+    100: 750, // Gnosis
+    137: 750, // Polygon
+    250: 500, // Fantom
+    8453: 1000, // Base (cheap L2)
+    42161: 1000, // Arbitrum (cheap L2)
+  }
+  private readonly DEFAULT_BATCH_SIZE = 500
   private readonly QUEUE_WINDOW = 10 // ms to wait for more calls
   private readonly MAX_RETRIES = 3
+  private readonly CALL_TIMEOUT = 30000 // 30 seconds
 
   // Rate limiting for each chain
   private limiters: Map<number, ReturnType<typeof pLimit>> = new Map()
@@ -38,6 +49,13 @@ export class MulticallAggregator {
     ;[1, 10, 100, 137, 250, 8453, 42161].forEach((chainId) => {
       this.limiters.set(chainId, pLimit(10))
     })
+  }
+
+  /**
+   * Get batch size for a specific chain
+   */
+  private getBatchSize(chainId: number): number {
+    return this.BATCH_SIZES[chainId] || this.DEFAULT_BATCH_SIZE
   }
 
   /**
@@ -102,7 +120,8 @@ export class MulticallAggregator {
     queue.push(request)
 
     // If we've hit the batch size, process immediately
-    if (queue.length >= this.BATCH_SIZE) {
+    const batchSize = this.getBatchSize(chainId)
+    if (queue.length >= batchSize) {
       this.processQueueImmediate(chainId)
       return
     }
@@ -158,10 +177,11 @@ export class MulticallAggregator {
 
     try {
       const limiter = this.limiters.get(chainId) || pLimit(10)
+      const batchSize = this.getBatchSize(chainId)
 
       // Process in batches
       while (queue.length > 0) {
-        const batch = queue.splice(0, this.BATCH_SIZE)
+        const batch = queue.splice(0, batchSize)
 
         // Execute batch with rate limiting
         await limiter(async () => {
@@ -192,11 +212,21 @@ export class MulticallAggregator {
 
     while (attempt < this.MAX_RETRIES) {
       try {
-        // Execute multicall with allowFailure
-        const results = await client.multicall({
+        // Create timeout promise (always rejects, never resolves)
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new MulticallTimeoutError(chainId, batch.length, this.CALL_TIMEOUT)),
+            this.CALL_TIMEOUT,
+          ),
+        )
+
+        // Execute multicall with timeout
+        const multicallPromise = client.multicall({
           contracts,
           allowFailure: true,
         })
+
+        const results = await Promise.race([multicallPromise, timeoutPromise])
 
         // Resolve/reject promises based on results
         batch.forEach((req, index) => {
@@ -210,7 +240,7 @@ export class MulticallAggregator {
         })
 
         // Success - log stats
-        const successCount = results.filter((r) => r.status === 'success').length
+        const successCount = results.filter((r: any) => r.status === 'success').length
         logger.debug(
           `Multicall completed for chain ${chainId}: ${successCount}/${batch.length} successful`,
         )
@@ -221,8 +251,9 @@ export class MulticallAggregator {
         attempt++
 
         if (attempt < this.MAX_RETRIES) {
+          const errorType = error instanceof MulticallTimeoutError ? 'timeout' : 'error'
           logger.warn(
-            `Multicall failed for chain ${chainId}, attempt ${attempt}/${this.MAX_RETRIES}`,
+            `Multicall ${errorType} for chain ${chainId}, attempt ${attempt}/${this.MAX_RETRIES}`,
             error,
           )
 

@@ -21,7 +21,6 @@ interface SourceAnalysis {
   coverage_pct: number
   accurate_prices: number
   accuracy_pct: number
-  avg_price_diff_pct: number
   missing_tokens: string[]
   extra_tokens: string[]
 }
@@ -222,7 +221,6 @@ function analyzeSource(
   ]
 
   let accurateCount = 0
-  let totalDiffPct = 0
   let comparedCount = 0
 
   const sourceAddresses = new Set(sourcePrices.keys())
@@ -240,7 +238,6 @@ function analyzeSource(
         accurateCount++
       }
 
-      totalDiffPct += diffPct
       comparedCount++
 
       csvRows.push(
@@ -269,7 +266,6 @@ function analyzeSource(
   const tokensFound = sourcePrices.size
   const coveragePct = (sourcePrices.size / ydaemonPrices.size) * 100
   const accuracyPct = comparedCount > 0 ? (accurateCount / comparedCount) * 100 : 0
-  const avgDiffPct = comparedCount > 0 ? totalDiffPct / comparedCount : 0
 
   const extraTokens = Array.from(sourceAddresses).filter((addr) => !ydaemonAddresses.has(addr))
 
@@ -278,7 +274,6 @@ function analyzeSource(
     coverage_pct: parseFloat(coveragePct.toFixed(2)),
     accurate_prices: accurateCount,
     accuracy_pct: parseFloat(accuracyPct.toFixed(2)),
-    avg_price_diff_pct: parseFloat(avgDiffPct.toFixed(2)),
     missing_tokens: missingTokens,
     extra_tokens: extraTokens,
   }
@@ -433,7 +428,6 @@ async function analyzeSources() {
             coverage_pct: 0,
             accurate_prices: 0,
             accuracy_pct: 0,
-            avg_price_diff_pct: 0,
             missing_tokens: [],
             extra_tokens: [],
           }
@@ -463,7 +457,6 @@ async function analyzeSources() {
         console.log(
           `  Accuracy: ${analysis.accuracy_pct}% (${analysis.accurate_prices}/${analysis.tokens_found} within 5%)`,
         )
-        console.log(`  Avg Price Diff: ${analysis.avg_price_diff_pct}%`)
         const dur = summaryReport.durations_ms?.[source]
         if (typeof dur === 'number') {
           console.log(`  Duration: ${dur}ms${dur > 5000 ? ' (SLOW)' : ''}`)

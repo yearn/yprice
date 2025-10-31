@@ -113,7 +113,7 @@ export class YearnVaultFetcher {
             tokenResult.result
           ) {
             vaultsWithData.push({
-              vault: vaultsNeedingOnChain[i],
+              vault: vaultsNeedingOnChain[i]!,
               underlying: (tokenResult.result as Address).toLowerCase(),
               pricePerShare: priceResult.result as bigint,
             })
@@ -159,7 +159,7 @@ export class YearnVaultFetcher {
             assetResult.result
           ) {
             vaultsWithData.push({
-              vault: v3Vaults[i],
+              vault: v3Vaults[i]!,
               underlying: (assetResult.result as Address).toLowerCase(),
               pricePerShare: convertResult.result as bigint,
             })

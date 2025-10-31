@@ -98,6 +98,20 @@ export class PriceFetcherOrchestrator {
       return new Map<string, Price>()
     }
 
+    // Smart routing: separate tokens by source hint
+    const tokensBySource = this.routeTokensBySource(missingTokens)
+
+    // Log routing stats for debugging
+    if (tokensBySource.withSource.size > 0) {
+      logger.debug(
+        `Smart routing: ${tokensBySource.noSource.length} tokens without source, ${Array.from(
+          tokensBySource.withSource.entries(),
+        )
+          .map(([src, tkns]) => `${tkns.length} ${src}`)
+          .join(', ')}`,
+      )
+    }
+
     // Run all independent fetchers in parallel
     progressTracker.update(progressKey, priceMap.size, 'Fetching prices from all sources...')
 
@@ -112,11 +126,17 @@ export class PriceFetcherOrchestrator {
     // All price fetchers that don't depend on other prices
     const independentFetchers = []
 
-    // DeFiLlama - primary price source
-    if (shouldRunFetcher('defillama')) {
+    // DeFiLlama - primary price source (skip for tokens with specific sources that don't need it)
+    const shouldSkipDefillama = (token: ERC20Token): boolean => {
+      const vaultSources = ['yearn-vault', 'erc4626', 'vault']
+      return vaultSources.some((vs) => token.source?.includes(vs))
+    }
+    const defillamaTokens = missingTokens.filter((t) => !shouldSkipDefillama(t))
+
+    if (shouldRunFetcher('defillama') && defillamaTokens.length > 0) {
       independentFetchers.push(
         this.defillama
-          .fetchPrices(chainId, missingTokens)
+          .fetchPrices(chainId, defillamaTokens)
           .then((results) => {
             const filtered = new Map()
             results.forEach((price, address) => {
@@ -130,22 +150,41 @@ export class PriceFetcherOrchestrator {
       )
     }
 
-    // Other API-based fetchers
-    if (shouldRunFetcher('curve-factories')) {
+    // Other API-based fetchers - only run if we have tokens that might match
+    const hasCurveTokens = missingTokens.some(
+      (t) =>
+        t.source?.includes('curve') ||
+        t.symbol?.toLowerCase().includes('crv') ||
+        t.name?.toLowerCase().includes('curve'),
+    )
+    if (shouldRunFetcher('curve-factories') && hasCurveTokens) {
       independentFetchers.push(
         this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError),
       )
     }
 
-    if (shouldRunFetcher('gamma')) {
+    const hasGammaTokens = missingTokens.some(
+      (t) => t.source?.includes('gamma') || t.symbol?.toLowerCase().includes('gamma'),
+    )
+    if (shouldRunFetcher('gamma') && hasGammaTokens) {
       independentFetchers.push(this.gamma.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
-    if (shouldRunFetcher('pendle')) {
+    const hasPendleTokens = missingTokens.some(
+      (t) => t.source?.includes('pendle') || t.symbol?.toLowerCase().includes('pendle'),
+    )
+    if (shouldRunFetcher('pendle') && hasPendleTokens) {
       independentFetchers.push(this.pendle.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
-    if (shouldRunFetcher('velodrome')) {
+    const hasVeloTokens = missingTokens.some(
+      (t) =>
+        t.source?.includes('velodrome') ||
+        t.source?.includes('aerodrome') ||
+        chainId === 10 ||
+        chainId === 8453,
+    )
+    if (shouldRunFetcher('velodrome') && hasVeloTokens) {
       independentFetchers.push(
         this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError),
       )
@@ -232,6 +271,30 @@ export class PriceFetcherOrchestrator {
     }
 
     return priceMap
+  }
+
+  /**
+   * Route tokens by source hint to optimize fetcher selection
+   * Inspired by ypricemagic's early exit pattern
+   */
+  private routeTokensBySource(tokens: ERC20Token[]): {
+    withSource: Map<string, ERC20Token[]>
+    noSource: ERC20Token[]
+  } {
+    const withSource = new Map<string, ERC20Token[]>()
+    const noSource: ERC20Token[] = []
+
+    tokens.forEach((token) => {
+      if (token.source) {
+        const existing = withSource.get(token.source) || []
+        existing.push(token)
+        withSource.set(token.source, existing)
+      } else {
+        noSource.push(token)
+      }
+    })
+
+    return { withSource, noSource }
   }
 
   setFetcherFilter(fetcherName: string): void {
