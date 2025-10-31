@@ -17,13 +17,18 @@ export class CurveAmmFetcher {
     const prices = new Map<string, Price>()
 
     try {
-      // Filter for potential Curve LP tokens (could have symbol like "crvUSD" or similar)
-      const potentialLpTokens = tokens.filter(
-        (token) =>
-          token.symbol?.toLowerCase().includes('crv') ||
-          token.symbol?.toLowerCase().includes('curve') ||
-          token.name?.toLowerCase().includes('curve'),
-      )
+      // Filter for potential Curve LP tokens using source hints and names/symbols
+      const potentialLpTokens = tokens.filter((token) => {
+        const src = token.source?.toLowerCase() || ''
+        const sym = token.symbol?.toLowerCase() || ''
+        const nm = token.name?.toLowerCase() || ''
+        return (
+          src.includes('curve') ||
+          sym.includes('crv') ||
+          sym.includes('curve') ||
+          nm.includes('curve')
+        )
+      })
 
       if (potentialLpTokens.length === 0) {
         return prices
@@ -33,35 +38,34 @@ export class CurveAmmFetcher {
         `Curve AMM: Checking ${potentialLpTokens.length} potential LP tokens on chain ${chainId}`,
       )
 
-      // Batch all virtual price calls using multicall
-      const virtualPriceContracts = potentialLpTokens.map((token) => ({
-        address: token.address as Address,
-        abi: CURVE_LP_TOKEN_ABI,
-        functionName: 'get_virtual_price' as const,
-        args: [],
-      }))
-
-      const virtualPriceResults = await batchReadContracts<bigint>(chainId, virtualPriceContracts)
-
+      // Batch virtual price calls using multicall in chunks
+      const chunkSize = 250
       let successCount = 0
-      potentialLpTokens.forEach((token, index) => {
-        const result = virtualPriceResults[index]
-        if (result && result.status === 'success' && result.result) {
-          const virtualPrice = result.result
-
-          // Virtual price is in 18 decimals, convert to 6 decimals for our price format
-          const price = virtualPrice / BigInt(10 ** 12)
-
-          if (price > BigInt(0)) {
-            prices.set(token.address.toLowerCase(), {
-              address: token.address.toLowerCase(),
-              price: price,
-              source: 'curve-amm',
-            })
-            successCount++
+      for (let i = 0; i < potentialLpTokens.length; i += chunkSize) {
+        const batchTokens = potentialLpTokens.slice(i, i + chunkSize)
+        const contracts = batchTokens.map((token) => ({
+          address: token.address as Address,
+          abi: CURVE_LP_TOKEN_ABI,
+          functionName: 'get_virtual_price' as const,
+          args: [],
+        }))
+        const results = await batchReadContracts<bigint>(chainId, contracts)
+        batchTokens.forEach((token, idx) => {
+          const result = results[idx]
+          if (result && result.status === 'success' && result.result) {
+            const virtualPrice = result.result
+            const price = virtualPrice / BigInt(10 ** 12)
+            if (price > BigInt(0)) {
+              prices.set(token.address.toLowerCase(), {
+                address: token.address.toLowerCase(),
+                price,
+                source: 'curve-amm',
+              })
+              successCount++
+            }
           }
-        }
-      })
+        })
+      }
 
       if (successCount > 0) {
         logger.debug(`Curve AMM: Fetched ${successCount} prices for chain ${chainId}`)

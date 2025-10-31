@@ -145,14 +145,18 @@ export class CurveDiscovery implements Discovery {
         })
       }
 
-      const poolAddressResults = await batchReadContracts<Address>(this.chainId, poolListContracts)
+      // Fetch pool addresses in chunks to avoid overly large multicalls
       const poolAddresses: Address[] = []
-
-      poolAddressResults.forEach((result) => {
-        if (result && result.status === 'success' && result.result) {
-          poolAddresses.push(result.result)
-        }
-      })
+      const addrChunkSize = 200
+      for (let i = 0; i < poolListContracts.length; i += addrChunkSize) {
+        const batch = poolListContracts.slice(i, i + addrChunkSize)
+        const res = await batchReadContracts<Address>(this.chainId, batch)
+        res.forEach((result: { status: string; result?: Address }) => {
+          if (result && result.status === 'success' && result.result) {
+            poolAddresses.push(result.result)
+          }
+        })
+      }
 
       // Add all pools as LP tokens
       for (const poolAddress of poolAddresses) {
@@ -171,22 +175,26 @@ export class CurveDiscovery implements Discovery {
         args: [poolAddr],
       }))
 
-      const coinResults = await batchReadContracts<readonly Address[]>(this.chainId, coinContracts)
-
-      coinResults.forEach((result) => {
-        if (result && result.status === 'success' && result.result) {
-          const coins = result.result
-          for (const coin of coins) {
-            if (coin && coin !== zeroAddress) {
-              tokens.push({
-                address: coin.toLowerCase(),
-                chainId: this.chainId,
-                source: 'curve-coin',
-              })
+      // Fetch coins in chunks as well
+      const coinChunkSize = 200
+      for (let i = 0; i < coinContracts.length; i += coinChunkSize) {
+        const batch = coinContracts.slice(i, i + coinChunkSize)
+        const coinResults = await batchReadContracts<readonly Address[]>(this.chainId, batch)
+        coinResults.forEach((result: { status: string; result?: readonly Address[] }) => {
+          if (result && result.status === 'success' && result.result) {
+            const coins = result.result
+            for (const coin of coins) {
+              if (coin && coin !== zeroAddress) {
+                tokens.push({
+                  address: coin.toLowerCase(),
+                  chainId: this.chainId,
+                  source: 'curve-coin',
+                })
+              }
             }
           }
-        }
-      })
+        })
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
       logger.warn(

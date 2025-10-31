@@ -52,8 +52,8 @@ interface DefiLlamaFetcher {
 
 export class DefilllamaFetcher implements DefiLlamaFetcher {
   private readonly baseUrl = 'https://coins.llama.fi'
-  private readonly limit = pLimit(10)
-  private readonly BATCH_SIZE = 100 // Reduced from 200 to avoid 413 errors
+  private readonly limit = pLimit(6)
+  private readonly BATCH_SIZE = 100
 
   async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {
     const prices = new Map<string, Price>()
@@ -177,15 +177,29 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       }
     } catch (error: any) {
       if (error.response?.status === 413) {
-        logger.error(
-          `DeFiLlama 413 Payload Too Large for ${tokens.length} tokens, will retry with smaller batch`,
+        logger.debug(
+          `DeFiLlama 413 Payload Too Large for ${tokens.length} tokens, retrying with smaller chunks`,
         )
-        // If we get 413, try again with half the batch size
-        if (tokens.length > 10) {
-          const halfChunks = chunk(tokens, Math.floor(tokens.length / 2))
-          for (const halfChunk of halfChunks) {
-            const halfPrices = await this.fetchChunkPrices(chainName, chainId, halfChunk)
-            forEach(Array.from(halfPrices.entries()), ([address, price]) => {
+        // Retry progressively smaller chunks: 100 -> 50 -> 25 -> 10
+        const sizes = [100, 50, 25, 10]
+        let recovered = false
+        for (const size of sizes) {
+          if (tokens.length <= size) continue
+          const retryChunks = chunk(tokens, size)
+          recovered = true
+          for (const c of retryChunks) {
+            const subPrices = await this.fetchChunkPrices(chainName, chainId, c)
+            forEach(Array.from(subPrices.entries()), ([address, price]) => {
+              prices.set(address, price)
+            })
+          }
+          break
+        }
+        if (!recovered) {
+          // Final attempt: process individually
+          for (const t of tokens) {
+            const subPrices = await this.fetchChunkPrices(chainName, chainId, [t])
+            forEach(Array.from(subPrices.entries()), ([address, price]) => {
               prices.set(address, price)
             })
           }

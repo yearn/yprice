@@ -1,14 +1,14 @@
 import dotenv from 'dotenv'
-import { initializeStorage, StorageType, getStorage, StorageWrapper } from 'storage/index'
+// Ephemeral analyzer: no storage imports
 import { logger } from 'utils/index'
 import { SUPPORTED_CHAINS } from 'models/types'
-import { chainDiscoveryServices, chainFetchers, DISCOVERY_CONFIGS } from 'discovery/config'
+import { chainDiscoveryServices, chainFetchers } from 'discovery/config'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import axios from 'axios'
 import path from 'path'
 import tokenDiscoveryService from 'discovery/tokenDiscoveryService'
 import { PriceFetcherOrchestrator } from 'fetchers/index'
-import { Price } from 'models/index'
+import { Price, ERC20Token } from 'models/index'
 
 dotenv.config()
 
@@ -31,6 +31,8 @@ interface SummaryReport {
   timestamp: string
   ydaemon_total_tokens: number
   sources: Record<string, SourceAnalysis>
+  durations_ms?: Record<string, number>
+  slow_sources_ms?: { source: string; duration_ms: number }[]
 }
 
 // Ydaemon API endpoints by chain
@@ -80,8 +82,9 @@ async function fetchYdaemonPrices(chainId: number): Promise<Map<string, number>>
 async function runSourceForChain(
   chainId: number,
   route: string,
-  allChainTokens?: any[],
-): Promise<void> {
+  allChainTokens?: ERC20Token[],
+  sharedPrices?: Map<string, Price>,
+): Promise<Map<string, number>> {
   logger.info(`Running ${route} for chain ${chainId}...`)
 
   const discoveryServices = chainDiscoveryServices[chainId] || []
@@ -94,81 +97,113 @@ async function runSourceForChain(
     throw new Error(`Route '${route}' is not available for chain ${chainId}`)
   }
 
-  const storage = new StorageWrapper(getStorage())
+  const toUsdMap = (prices: Map<string, Price>): Map<string, number> => {
+    const result = new Map<string, number>()
+    prices.forEach((p, addr) => {
+      result.set(addr.toLowerCase(), Number(p.price) / 1e6)
+    })
+    return result
+  }
 
   if (isDiscoveryService) {
-    // Run only the specific discovery service for this chain
     logger.info(`Running discovery service: ${route}`)
     const tokens = await tokenDiscoveryService.discoverTokensForService(chainId, route)
-    const chainTokens = tokens.get(chainId)
+    const chainTokens = tokens.get(chainId) || []
 
-    if (!chainTokens || chainTokens.length === 0) {
+    if (chainTokens.length === 0) {
       logger.warn(`No tokens found for chain ${chainId} with discovery service ${route}`)
-      return
+      return new Map()
     }
 
     logger.info(`Discovered ${chainTokens.length} tokens, fetching prices...`)
 
-    // Fetch prices for discovered tokens
     const fetcher = new PriceFetcherOrchestrator()
-    const prices = await fetcher.fetchPrices(chainId, chainTokens)
-
-    // Store prices
-    const pricesArray = Array.from(prices.values())
-    if (pricesArray.length > 0) {
-      await storage.storePrices(chainId, pricesArray)
-    }
-
+    const prices = await fetcher.fetchPrices(chainId, chainTokens, sharedPrices)
     logger.info(`Found prices for ${prices.size} tokens`)
+    return toUsdMap(prices)
   } else {
-    // For price fetchers, use provided tokens or discover once
     let tokens = allChainTokens
-
     if (!tokens) {
       logger.info(`No tokens provided, discovering tokens for chain ${chainId}...`)
       const tokensByChain = await tokenDiscoveryService.discoverTokensForService(
         chainId,
         'tokenlist',
       )
-      tokens = tokensByChain.get(chainId)
+      tokens = tokensByChain.get(chainId) || []
     }
 
     if (!tokens || tokens.length === 0) {
       logger.warn(`No tokens found for chain ${chainId}`)
-      return
+      return new Map()
     }
 
     logger.info(`Using ${tokens.length} tokens, fetching prices with ${route}...`)
-
-    // Create a fetcher that only uses the specified source
     const fetcher = new PriceFetcherOrchestrator()
     fetcher.setFetcherFilter(route)
-
-    const prices = await fetcher.fetchPrices(chainId, tokens)
-
-    // Store prices
-    const pricesArray = Array.from(prices.values())
-    if (pricesArray.length > 0) {
-      await storage.storePrices(chainId, pricesArray)
-    }
-
+    const prices = await fetcher.fetchPrices(chainId, tokens, sharedPrices)
     logger.info(`Found prices for ${prices.size} tokens`)
+    return toUsdMap(prices)
   }
 }
 
-async function getSourcePrices(chainId: number): Promise<Map<string, number>> {
-  const storage = new StorageWrapper(getStorage())
-  const { asSlice } = await storage.listPrices(chainId)
-
-  const prices = new Map<string, number>()
-  asSlice.forEach((price) => {
-    // Convert to USD (6 decimal places)
-    const priceUsd = Number(price.price) / 1e6
-    prices.set(price.address.toLowerCase(), priceUsd)
-  })
-
-  return prices
+function isOnChainHeavy(source: string): boolean {
+  const heavy = new Set([
+    'uniswap',
+    'aave',
+    'compound',
+    'curve-factories',
+    'curve-registries',
+    'yearn',
+    'curve-amm',
+    'erc4626',
+    'yearn-vault',
+  ])
+  return heavy.has(source)
 }
+
+function orderSources(sources: string[]): string[] {
+  const priority: Record<string, number> = {
+    defillama: 0,
+    'curve-amm': 1,
+    erc4626: 1,
+    'yearn-vault': 1,
+    uniswap: 2,
+  }
+  return [...sources].sort((a, b) => (priority[a] ?? 5) - (priority[b] ?? 5))
+}
+
+async function quickRpcProbe(chainId: number): Promise<boolean> {
+  try {
+    const envKey = `RPC_URI_FOR_${chainId}`
+    const url = process.env[envKey]
+    if (!url) return false
+    const body = { jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }
+    const resp = await axios.post(url, body, { timeout: 2000 })
+    return Boolean(resp?.data?.result)
+  } catch {
+    return false
+  }
+}
+
+async function runPool<T>(items: T[], worker: (item: T) => Promise<void>, limit: number) {
+  const queue = [...items]
+  const running: Promise<void>[] = []
+  while (queue.length > 0 || running.length > 0) {
+    while (queue.length > 0 && running.length < limit) {
+      const item = queue.shift() as T
+      const p = worker(item).finally(() => {
+        const idx = running.indexOf(p)
+        if (idx >= 0) running.splice(idx, 1)
+      })
+      running.push(p)
+    }
+    if (running.length > 0) {
+      await Promise.race(running)
+    }
+  }
+}
+
+// Removed storage round-trips; pricing stays in-memory for analysis
 
 function calculatePriceDifference(sourcePrice: number, ydaemonPrice: number): number {
   if (ydaemonPrice === 0) return 100
@@ -263,7 +298,9 @@ async function analyzeSources() {
     const chainId = parseInt(chainIdArg, 10)
 
     // Validate chain ID
-    const supportedChainIds = Object.values(SUPPORTED_CHAINS).map((chain) => chain.id)
+    const supportedChainIds = (Object.values(SUPPORTED_CHAINS) as Array<{ id: number }>).map(
+      (chain) => chain.id,
+    )
     if (!supportedChainIds.includes(chainId)) {
       logger.error(
         `Chain ${chainId} is not supported. Supported chains: ${supportedChainIds.join(', ')}`,
@@ -271,12 +308,7 @@ async function analyzeSources() {
       process.exit(1)
     }
 
-    // Initialize storage
-    const cacheTTL = parseInt(process.env.CACHE_TTL_SECONDS || '0', 10)
-    const storageType = (process.env.STORAGE_TYPE || 'file') as StorageType
-    const backupDir = './data/prices'
-
-    initializeStorage(storageType, cacheTTL, backupDir)
+    // Ephemeral run: no storage initialization
 
     // Create output directory
     const timestamp = new Date().toISOString().split('T')[0]
@@ -301,14 +333,13 @@ async function analyzeSources() {
       timestamp: new Date().toISOString(),
       ydaemon_total_tokens: ydaemonPrices.size,
       sources: {},
+      durations_ms: {},
+      slow_sources_ms: [],
     }
 
-    // Clear existing prices before starting
-    const storage = new StorageWrapper(getStorage())
-    await storage.clearCache(chainId)
-
-    // Pre-discover tokens for price fetchers (using tokenlist as a baseline)
-    let baselineTokens = null
+    // Pre-discover tokens for price fetchers (using tokenlist as a baseline) and prepare shared cache
+    let baselineTokens: ERC20Token[] = []
+    const sharedPrices: Map<string, Price> = new Map()
     if (priceFetchers.length > 0) {
       logger.info(`\n📊 Pre-discovering tokens for chain ${chainId} to use with price fetchers...`)
       try {
@@ -316,50 +347,100 @@ async function analyzeSources() {
           chainId,
           'tokenlist',
         )
-        baselineTokens = tokensByChain.get(chainId)
-        logger.info(`Discovered ${baselineTokens?.length || 0} baseline tokens`)
+        baselineTokens = tokensByChain.get(chainId) || []
+        logger.info(`Discovered ${baselineTokens.length} baseline tokens`)
       } catch (error) {
         logger.warn(`Failed to pre-discover tokens: ${error}`)
       }
     }
 
-    // Analyze each source
-    for (const source of allSources) {
-      logger.info(`\n🔄 Analyzing source: ${source}`)
-
+    // Pre-warm with defillama if available to seed shared cache
+    const sourcesSet = new Set(allSources)
+    if (sourcesSet.has('defillama')) {
       try {
-        // Clear cache before each run to ensure clean data
-        await storage.clearCache(chainId)
-
-        // Check if this is a price fetcher and we have baseline tokens
-        const isPriceFetcher = priceFetchers.includes(source)
-
-        // Run source for this specific chain only
-        await runSourceForChain(chainId, source, isPriceFetcher ? baselineTokens : undefined)
-
-        // Get prices from storage
-        const sourcePrices = await getSourcePrices(chainId)
-
-        // Analyze and save results
-        const analysis = analyzeSource(source, sourcePrices, ydaemonPrices, outputDir)
-        summaryReport.sources[source] = analysis
-
+        const startIso = new Date().toISOString()
+        const start = Date.now()
+        logger.info(`[${startIso}] Start source: defillama (pre-warm) `)
+        const prewarmPrices = await runSourceForChain(
+          chainId,
+          'defillama',
+          baselineTokens ?? [],
+          sharedPrices,
+        )
+        const end = Date.now()
+        const duration = end - start
+        const endIso = new Date().toISOString()
+        summaryReport.durations_ms!['defillama'] = duration
+        if (duration > 5000) {
+          summaryReport.slow_sources_ms!.push({ source: 'defillama', duration_ms: duration })
+          logger.warn(`[${endIso}] Done source: defillama in ${duration}ms (SLOW) `)
+        } else {
+          logger.info(`[${endIso}] Done source: defillama in ${duration}ms`)
+        }
+        // Merge prewarmed USD prices back into sharedPrices only as scaled values are needed by fetchers
+        // We keep sharedPrices as Price map; defillama call already updated it internally via fetcher
+        const analysis = analyzeSource('defillama', prewarmPrices, ydaemonPrices, outputDir)
+        summaryReport.sources['defillama'] = analysis
         logger.info(
-          `✅ ${source}: Found ${analysis.tokens_found} tokens, Coverage: ${analysis.coverage_pct}%, Accuracy: ${analysis.accuracy_pct}%`,
+          `✅ defillama: Found ${analysis.tokens_found} tokens, Coverage: ${analysis.coverage_pct}%, Accuracy: ${analysis.accuracy_pct}%`,
         )
       } catch (error) {
-        logger.error(`Failed to analyze ${source}:`, error)
-        summaryReport.sources[source] = {
-          tokens_found: 0,
-          coverage_pct: 0,
-          accurate_prices: 0,
-          accuracy_pct: 0,
-          avg_price_diff_pct: 0,
-          missing_tokens: [],
-          extra_tokens: [],
-        }
+        logger.error(`Failed to pre-warm defillama:`, error)
       }
     }
+
+    // Order and possibly filter sources based on RPC health
+    const onChainHealthy = await quickRpcProbe(chainId)
+    const remainingSources = orderSources(allSources).filter((s) => s !== 'defillama')
+    const filtered = remainingSources.filter((s) => onChainHealthy || !isOnChainHeavy(s))
+
+    const PARALLELISM = 4
+
+    await runPool(
+      filtered,
+      async (source) => {
+        const startIso = new Date().toISOString()
+        const start = Date.now()
+        logger.info(`\n[${startIso}] Start source: ${source}`)
+        try {
+          const isPriceFetcher = priceFetchers.includes(source)
+          const tokensForFetcher = isPriceFetcher ? (baselineTokens ?? []) : undefined
+          const sourcePrices = await runSourceForChain(
+            chainId,
+            source,
+            tokensForFetcher,
+            sharedPrices,
+          )
+          const analysis = analyzeSource(source, sourcePrices, ydaemonPrices, outputDir)
+          summaryReport.sources[source] = analysis
+          const end = Date.now()
+          const duration = end - start
+          const endIso = new Date().toISOString()
+          summaryReport.durations_ms![source] = duration
+          if (duration > 5000) {
+            summaryReport.slow_sources_ms!.push({ source, duration_ms: duration })
+            logger.warn(`[${endIso}] Done source: ${source} in ${duration}ms (SLOW)`)
+          } else {
+            logger.info(`[${endIso}] Done source: ${source} in ${duration}ms`)
+          }
+          logger.info(
+            `✅ ${source}: Found ${analysis.tokens_found} tokens, Coverage: ${analysis.coverage_pct}%, Accuracy: ${analysis.accuracy_pct}%`,
+          )
+        } catch (error) {
+          logger.error(`Failed to analyze ${source}:`, error)
+          summaryReport.sources[source] = {
+            tokens_found: 0,
+            coverage_pct: 0,
+            accurate_prices: 0,
+            accuracy_pct: 0,
+            avg_price_diff_pct: 0,
+            missing_tokens: [],
+            extra_tokens: [],
+          }
+        }
+      },
+      PARALLELISM,
+    )
 
     // Save summary report
     const summaryPath = path.join(outputDir, 'summary-report.json')
@@ -383,6 +464,10 @@ async function analyzeSources() {
           `  Accuracy: ${analysis.accuracy_pct}% (${analysis.accurate_prices}/${analysis.tokens_found} within 5%)`,
         )
         console.log(`  Avg Price Diff: ${analysis.avg_price_diff_pct}%`)
+        const dur = summaryReport.durations_ms?.[source]
+        if (typeof dur === 'number') {
+          console.log(`  Duration: ${dur}ms${dur > 5000 ? ' (SLOW)' : ''}`)
+        }
       })
 
     process.exit(0)

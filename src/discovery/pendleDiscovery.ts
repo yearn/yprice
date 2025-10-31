@@ -239,29 +239,41 @@ export class PendleDiscovery implements Discovery {
     try {
       const httpsAgent = createHttpsAgent()
 
-      // Fetch all pages
-      while (true) {
-        const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${skip}&limit=${limit}`
-        const response = await axios.get<PendleMarketsResponse>(paginatedUrl, {
-          timeout: 30000,
-          headers: {
-            'User-Agent': 'yearn-pricing-service',
-            Accept: 'application/json',
-          },
-          httpsAgent: httpsAgent,
-        })
-
-        if (!response.data?.results || response.data.results.length === 0) {
-          break
+      // Fetch pages with small concurrency window
+      const window = 4
+      let done = false
+      while (!done) {
+        const tasks: Promise<void>[] = []
+        for (let i = 0; i < window; i++) {
+          const currentSkip = skip + i * limit
+          const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${currentSkip}&limit=${limit}`
+          tasks.push(
+            axios
+              .get<PendleMarketsResponse>(paginatedUrl, {
+                timeout: 30000,
+                headers: {
+                  'User-Agent': 'yearn-pricing-service',
+                  Accept: 'application/json',
+                },
+                httpsAgent: httpsAgent,
+              })
+              .then((response) => {
+                if (response.data?.results && response.data.results.length > 0) {
+                  allMarkets.push(...response.data.results)
+                  if (response.data.results.length < limit) {
+                    done = true
+                  }
+                } else {
+                  done = true
+                }
+              })
+              .catch(() => {
+                // Ignore errors per page
+              }),
+          )
         }
-
-        allMarkets.push(...response.data.results)
-
-        if (response.data.results.length < limit) {
-          break
-        }
-
-        skip += limit
+        await Promise.all(tasks)
+        skip += window * limit
       }
 
       if (allMarkets.length > 0) {

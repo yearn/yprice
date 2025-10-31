@@ -50,9 +50,11 @@ export class BalancerDiscovery implements Discovery {
     const subgraphTokens = await this.discoverFromSubgraph()
     tokens.push(...subgraphTokens)
 
-    // Try API as fallback/supplement
-    const apiTokens = await this.discoverFromAPI()
-    tokens.push(...apiTokens)
+    // If subgraph is sufficiently large, skip API fallback to avoid duplicate large fetches
+    if (subgraphTokens.length < 1000) {
+      const apiTokens = await this.discoverFromAPI()
+      tokens.push(...apiTokens)
+    }
 
     logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`)
     return deduplicateTokens(tokens)

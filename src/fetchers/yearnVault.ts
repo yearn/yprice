@@ -81,30 +81,29 @@ export class YearnVaultFetcher {
 
       // For vaults without cached data, fetch on-chain
       if (vaultsNeedingOnChain.length > 0) {
-        // Try V2 method: pricePerShare()
-        const v2PriceContracts = vaultsNeedingOnChain.map((vault) => ({
-          address: vault.address as Address,
-          abi: YEARN_VAULT_V2_ABI,
-          functionName: 'pricePerShare' as const,
-          args: [],
-        }))
+        // Combine V2 pricePerShare and token() into a single mixed multicall batch
+        const mixedContracts = vaultsNeedingOnChain.flatMap((vault) => [
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V2_ABI,
+            functionName: 'pricePerShare' as const,
+            args: [],
+          },
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V2_ABI,
+            functionName: 'token' as const,
+            args: [],
+          },
+        ])
 
-        const v2PriceResults = await batchReadContracts<bigint>(chainId, v2PriceContracts)
+        const mixedResults = await batchReadContracts<any>(chainId, mixedContracts)
 
-        // Also get underlying token addresses
-        const tokenContracts = vaultsNeedingOnChain.map((vault) => ({
-          address: vault.address as Address,
-          abi: YEARN_VAULT_V2_ABI,
-          functionName: 'token' as const,
-          args: [],
-        }))
-
-        const tokenResults = await batchReadContracts<Address>(chainId, tokenContracts)
-
-        vaultsNeedingOnChain.forEach((vault, index) => {
-          const priceResult = v2PriceResults[index]
-          const tokenResult = tokenResults[index]
-
+        for (let i = 0; i < vaultsNeedingOnChain.length; i++) {
+          const priceIdx = i * 2
+          const tokenIdx = i * 2 + 1
+          const priceResult = mixedResults[priceIdx]
+          const tokenResult = mixedResults[tokenIdx]
           if (
             priceResult &&
             priceResult.status === 'success' &&
@@ -114,12 +113,12 @@ export class YearnVaultFetcher {
             tokenResult.result
           ) {
             vaultsWithData.push({
-              vault,
-              underlying: tokenResult.result.toLowerCase(),
-              pricePerShare: priceResult.result,
+              vault: vaultsNeedingOnChain[i],
+              underlying: (tokenResult.result as Address).toLowerCase(),
+              pricePerShare: priceResult.result as bigint,
             })
           }
-        })
+        }
       }
 
       // Try V3 method for vaults that didn't work with V2 or cache
@@ -128,31 +127,29 @@ export class YearnVaultFetcher {
       )
 
       if (v3Vaults.length > 0) {
-        // For V3, use convertToAssets(1e18)
-        const v3ConvertContracts = v3Vaults.map((vault) => ({
-          address: vault.address as Address,
-          abi: YEARN_VAULT_V3_ABI,
-          functionName: 'convertToAssets' as const,
-          args: [BigInt(10 ** 18)], // 1e18 shares
-        }))
+        // Combine V3 convertToAssets and asset() into a single mixed batch
+        const v3Mixed = v3Vaults.flatMap((vault) => [
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V3_ABI,
+            functionName: 'convertToAssets' as const,
+            args: [BigInt(10 ** 18)],
+          },
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V3_ABI,
+            functionName: 'asset' as const,
+            args: [],
+          },
+        ])
 
-        const v3ConvertResults = await batchReadContracts<bigint>(chainId, v3ConvertContracts)
+        const v3Results = await batchReadContracts<any>(chainId, v3Mixed)
 
-        // Get asset addresses for V3
-        const v3AssetContracts = v3Vaults.map((vault) => ({
-          address: vault.address as Address,
-          abi: YEARN_VAULT_V3_ABI,
-          functionName: 'asset' as const,
-          args: [],
-        }))
-
-        const v3AssetResults = await batchReadContracts<Address>(chainId, v3AssetContracts)
-
-        // Process V3 vaults
-        v3Vaults.forEach((vault, index) => {
-          const convertResult = v3ConvertResults[index]
-          const assetResult = v3AssetResults[index]
-
+        for (let i = 0; i < v3Vaults.length; i++) {
+          const convIdx = i * 2
+          const assetIdx = i * 2 + 1
+          const convertResult = v3Results[convIdx]
+          const assetResult = v3Results[assetIdx]
           if (
             convertResult &&
             convertResult.status === 'success' &&
@@ -162,12 +159,12 @@ export class YearnVaultFetcher {
             assetResult.result
           ) {
             vaultsWithData.push({
-              vault,
-              underlying: assetResult.result.toLowerCase(),
-              pricePerShare: convertResult.result, // This is effectively the same as pricePerShare for 1e18
+              vault: v3Vaults[i],
+              underlying: (assetResult.result as Address).toLowerCase(),
+              pricePerShare: convertResult.result as bigint,
             })
           }
-        })
+        }
       }
 
       // Calculate prices for all vaults
