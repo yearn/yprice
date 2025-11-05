@@ -283,10 +283,14 @@ async function analyzeSources() {
   try {
     // Parse command line arguments
     const chainIdArg = process.argv[2]
+    const serviceFlag = process.argv[3]
 
     if (!chainIdArg) {
-      console.log('Usage: analyze-sources <chainId>')
-      console.log('Example: analyze-sources 1')
+      console.log('Usage: analyze-sources <chainId> [service]')
+      console.log('Examples:')
+      console.log('  analyze-sources 1          # Run all sources for chain 1')
+      console.log('  analyze-sources 1 yearn    # Run only yearn source for chain 1')
+      console.log('  analyze-sources 1 defillama # Run only defillama source for chain 1')
       process.exit(1)
     }
 
@@ -307,7 +311,8 @@ async function analyzeSources() {
 
     // Create output directory
     const timestamp = new Date().toISOString().split('T')[0]
-    const outputDir = `output/analyze-sources-${chainId}-${timestamp}`
+    const serviceSuffix = serviceFlag ? `-${serviceFlag.toLowerCase()}` : ''
+    const outputDir = `output/analyze-sources-${chainId}${serviceSuffix}-${timestamp}`
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true })
     }
@@ -318,9 +323,25 @@ async function analyzeSources() {
     // Get all sources for this chain
     const discoveryServices = chainDiscoveryServices[chainId] || []
     const priceFetchers = chainFetchers[chainId] || []
-    const allSources = [...discoveryServices, ...priceFetchers]
+    let allSources = [...discoveryServices, ...priceFetchers]
 
-    logger.info(`Analyzing ${allSources.length} sources for chain ${chainId}`)
+    // Filter by service if specified
+    if (serviceFlag) {
+      const requestedService = serviceFlag.toLowerCase()
+      const availableServices = new Set(allSources)
+
+      if (!availableServices.has(requestedService)) {
+        logger.error(`Service '${serviceFlag}' is not available for chain ${chainId}`)
+        logger.info(`Available services for chain ${chainId}:`)
+        allSources.forEach(service => logger.info(`  - ${service}`))
+        process.exit(1)
+      }
+
+      allSources = [requestedService]
+      logger.info(`Analyzing single source '${requestedService}' for chain ${chainId}`)
+    } else {
+      logger.info(`Analyzing ${allSources.length} sources for chain ${chainId}`)
+    }
 
     // Initialize summary report
     const summaryReport: SummaryReport = {

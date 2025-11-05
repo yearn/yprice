@@ -1,23 +1,23 @@
-export * from './curveAmm'
-export * from './curveFactories'
-export * from './defillama'
-export * from './erc4626'
-export * from './gamma'
-export * from './lensOracle'
-export * from './pendle'
-export * from './velodrome'
-export * from './yearnVault'
+export * from './services/curveAmm'
+export * from './services/curveFactories'
+export * from './services/defillama'
+export * from './services/erc4626'
+export * from './services/gamma'
+export * from './services/lensOracle'
+export * from './services/pendle'
+export * from './services/velodrome'
+export * from './services/yearnVault'
 
 import { DISCOVERY_CONFIGS } from 'discovery/config'
 import type { PriceFetcher } from 'discovery/types'
-import { CurveAmmFetcher } from 'fetchers/curveAmm'
-import { CurveFactoriesFetcher } from 'fetchers/curveFactories'
-import { DefilllamaFetcher } from 'fetchers/defillama'
-import { ERC4626Fetcher } from 'fetchers/erc4626'
-import { GammaFetcher } from 'fetchers/gamma'
-import { PendleFetcher } from 'fetchers/pendle'
-import { VelodromeFetcher } from 'fetchers/velodrome'
-import { YearnVaultFetcher } from 'fetchers/yearnVault'
+import { CurveAmmFetcher } from 'fetchers/services/curveAmm'
+import { CurveFactoriesFetcher } from 'fetchers/services/curveFactories'
+import { DefilllamaFetcher } from 'fetchers/services/defillama'
+import { ERC4626Fetcher } from 'fetchers/services/erc4626'
+import { GammaFetcher } from 'fetchers/services/gamma'
+import { PendleFetcher } from 'fetchers/services/pendle'
+import { VelodromeFetcher } from 'fetchers/services/velodrome'
+import { YearnVaultFetcher } from 'fetchers/services/yearnVault'
 import { ERC20Token, Price } from 'models/index'
 import { logger } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
@@ -137,9 +137,9 @@ export class PriceFetcherOrchestrator {
       independentFetchers.push(
         this.defillama
           .fetchPrices(chainId, defillamaTokens)
-          .then((results) => {
-            const filtered = new Map()
-            results.forEach((price, address) => {
+          .then((results: Map<string, Price>) => {
+            const filtered = new Map<string, Price>()
+            results.forEach((price: Price, address: string) => {
               if (!skipDefillamaAddresses.has(address)) {
                 filtered.set(address, price)
               }
@@ -196,7 +196,7 @@ export class PriceFetcherOrchestrator {
     // Process results and update price map
     results.forEach((result) => {
       if (result.status === 'fulfilled') {
-        result.value.forEach((price, address) => {
+        result.value.forEach((price: Price, address: string) => {
           if (price.price > BigInt(0) && !priceMap.has(address)) {
             priceMap.set(address, price)
             priceCache.set(chainId, address, price, symbolMap.get(address))
@@ -254,7 +254,7 @@ export class PriceFetcherOrchestrator {
     // Process dependent results
     dependentResults.forEach((result) => {
       if (result.status === 'fulfilled') {
-        result.value.forEach((price, address) => {
+        result.value.forEach((price: Price, address: string) => {
           if (price.price > BigInt(0) && !priceMap.has(address)) {
             priceMap.set(address, price)
             priceCache.set(chainId, address, price, symbolMap.get(address))

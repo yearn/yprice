@@ -60,7 +60,9 @@ export class YearnVaultFetcher {
 
       // First check cached data from discovery
       const vaultsWithData: { vault: ERC20Token; underlying: string; pricePerShare: bigint }[] = []
-      const vaultsNeedingOnChain: ERC20Token[] = []
+      const v2VaultsNeedingFetch: ERC20Token[] = []
+      const v3VaultsNeedingFetch: ERC20Token[] = []
+      const unknownVaultsNeedingFetch: ERC20Token[] = []
 
       yearnVaults.forEach((vault) => {
         const cached = discoveryPriceCache.get(chainId, vault.address)
@@ -71,7 +73,15 @@ export class YearnVaultFetcher {
             pricePerShare: cached.data.pricePerShare,
           })
         } else {
-          vaultsNeedingOnChain.push(vault)
+          // Use cached vault version to determine which method to use
+          const vaultVersion = cached?.data?.vaultVersion
+          if (vaultVersion === 'v2') {
+            v2VaultsNeedingFetch.push(vault)
+          } else if (vaultVersion === 'v3') {
+            v3VaultsNeedingFetch.push(vault)
+          } else {
+            unknownVaultsNeedingFetch.push(vault)
+          }
         }
       })
 
@@ -79,10 +89,14 @@ export class YearnVaultFetcher {
         logger.debug(`Yearn Vault: Using ${vaultsWithData.length} cached pricePerShare values`)
       }
 
-      // For vaults without cached data, fetch on-chain
-      if (vaultsNeedingOnChain.length > 0) {
-        // Combine V2 pricePerShare and token() into a single mixed multicall batch
-        const mixedContracts = vaultsNeedingOnChain.flatMap((vault) => [
+      // Batch all on-chain calls together for maximum efficiency
+      const allContracts: any[] = []
+      const contractInfo: { vault: ERC20Token; type: 'v2' | 'v3' | 'unknown'; dataIndex: number }[] = []
+
+      // Add V2 vaults (known version)
+      v2VaultsNeedingFetch.forEach((vault) => {
+        contractInfo.push({ vault, type: 'v2', dataIndex: allContracts.length })
+        allContracts.push(
           {
             address: vault.address as Address,
             abi: YEARN_VAULT_V2_ABI,
@@ -95,40 +109,13 @@ export class YearnVaultFetcher {
             functionName: 'token' as const,
             args: [],
           },
-        ])
+        )
+      })
 
-        const mixedResults = await batchReadContracts<any>(chainId, mixedContracts)
-
-        for (let i = 0; i < vaultsNeedingOnChain.length; i++) {
-          const priceIdx = i * 2
-          const tokenIdx = i * 2 + 1
-          const priceResult = mixedResults[priceIdx]
-          const tokenResult = mixedResults[tokenIdx]
-          if (
-            priceResult &&
-            priceResult.status === 'success' &&
-            priceResult.result &&
-            tokenResult &&
-            tokenResult.status === 'success' &&
-            tokenResult.result
-          ) {
-            vaultsWithData.push({
-              vault: vaultsNeedingOnChain[i]!,
-              underlying: (tokenResult.result as Address).toLowerCase(),
-              pricePerShare: priceResult.result as bigint,
-            })
-          }
-        }
-      }
-
-      // Try V3 method for vaults that didn't work with V2 or cache
-      const v3Vaults = vaultsNeedingOnChain.filter(
-        (vault) => !vaultsWithData.find((v) => v.vault.address === vault.address),
-      )
-
-      if (v3Vaults.length > 0) {
-        // Combine V3 convertToAssets and asset() into a single mixed batch
-        const v3Mixed = v3Vaults.flatMap((vault) => [
+      // Add V3 vaults (known version)
+      v3VaultsNeedingFetch.forEach((vault) => {
+        contractInfo.push({ vault, type: 'v3', dataIndex: allContracts.length })
+        allContracts.push(
           {
             address: vault.address as Address,
             abi: YEARN_VAULT_V3_ABI,
@@ -141,30 +128,126 @@ export class YearnVaultFetcher {
             functionName: 'asset' as const,
             args: [],
           },
-        ])
+        )
+      })
 
-        const v3Results = await batchReadContracts<any>(chainId, v3Mixed)
+      // For unknown vaults, try both V2 and V3 methods
+      unknownVaultsNeedingFetch.forEach((vault) => {
+        contractInfo.push({ vault, type: 'unknown', dataIndex: allContracts.length })
+        allContracts.push(
+          // V2 methods
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V2_ABI,
+            functionName: 'pricePerShare' as const,
+            args: [],
+          },
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V2_ABI,
+            functionName: 'token' as const,
+            args: [],
+          },
+          // V3 methods
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V3_ABI,
+            functionName: 'convertToAssets' as const,
+            args: [BigInt(10 ** 18)],
+          },
+          {
+            address: vault.address as Address,
+            abi: YEARN_VAULT_V3_ABI,
+            functionName: 'asset' as const,
+            args: [],
+          },
+        )
+      })
 
-        for (let i = 0; i < v3Vaults.length; i++) {
-          const convIdx = i * 2
-          const assetIdx = i * 2 + 1
-          const convertResult = v3Results[convIdx]
-          const assetResult = v3Results[assetIdx]
-          if (
-            convertResult &&
-            convertResult.status === 'success' &&
-            convertResult.result &&
-            assetResult &&
-            assetResult.status === 'success' &&
-            assetResult.result
-          ) {
-            vaultsWithData.push({
-              vault: v3Vaults[i]!,
-              underlying: (assetResult.result as Address).toLowerCase(),
-              pricePerShare: convertResult.result as bigint,
-            })
+      // Execute all calls in a single batch
+      if (allContracts.length > 0) {
+        logger.debug(
+          `Yearn Vault: Fetching on-chain data for ${v2VaultsNeedingFetch.length} V2, ${v3VaultsNeedingFetch.length} V3, and ${unknownVaultsNeedingFetch.length} unknown vaults`,
+        )
+
+        const results = await batchReadContracts<any>(chainId, allContracts)
+
+        // Process results based on vault type
+        contractInfo.forEach(({ vault, type, dataIndex }) => {
+          if (type === 'v2') {
+            const priceResult = results[dataIndex]
+            const tokenResult = results[dataIndex + 1]
+            if (
+              priceResult?.status === 'success' &&
+              priceResult.result &&
+              tokenResult?.status === 'success' &&
+              tokenResult.result
+            ) {
+              vaultsWithData.push({
+                vault,
+                underlying: (tokenResult.result as Address).toLowerCase(),
+                pricePerShare: priceResult.result as bigint,
+              })
+            }
+          } else if (type === 'v3') {
+            const convertResult = results[dataIndex]
+            const assetResult = results[dataIndex + 1]
+            if (
+              convertResult?.status === 'success' &&
+              convertResult.result &&
+              assetResult?.status === 'success' &&
+              assetResult.result
+            ) {
+              vaultsWithData.push({
+                vault,
+                underlying: (assetResult.result as Address).toLowerCase(),
+                pricePerShare: convertResult.result as bigint,
+              })
+            }
+          } else {
+            // Unknown type - try V2 first, then V3
+            const v2PriceResult = results[dataIndex]
+            const v2TokenResult = results[dataIndex + 1]
+            const v3ConvertResult = results[dataIndex + 2]
+            const v3AssetResult = results[dataIndex + 3]
+
+            if (
+              v2PriceResult?.status === 'success' &&
+              v2PriceResult.result &&
+              v2TokenResult?.status === 'success' &&
+              v2TokenResult.result
+            ) {
+              vaultsWithData.push({
+                vault,
+                underlying: (v2TokenResult.result as Address).toLowerCase(),
+                pricePerShare: v2PriceResult.result as bigint,
+              })
+              // Cache the discovered version
+              const cached = discoveryPriceCache.get(chainId, vault.address)
+              discoveryPriceCache.set(chainId, vault.address, undefined, 'yearn-vault', {
+                ...cached?.data,
+                vaultVersion: 'v2',
+              })
+            } else if (
+              v3ConvertResult?.status === 'success' &&
+              v3ConvertResult.result &&
+              v3AssetResult?.status === 'success' &&
+              v3AssetResult.result
+            ) {
+              vaultsWithData.push({
+                vault,
+                underlying: (v3AssetResult.result as Address).toLowerCase(),
+                pricePerShare: v3ConvertResult.result as bigint,
+              })
+              // Cache the discovered version
+              const cached = discoveryPriceCache.get(chainId, vault.address)
+              discoveryPriceCache.set(chainId, vault.address, undefined, 'yearn-vault', {
+                ...cached?.data,
+                vaultVersion: 'v3',
+              })
+            }
           }
-        }
+        })
       }
 
       // Calculate prices for all vaults
