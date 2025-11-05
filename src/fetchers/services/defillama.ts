@@ -52,7 +52,11 @@ interface DefiLlamaFetcher {
 
 export class DefilllamaFetcher implements DefiLlamaFetcher {
   private readonly baseUrl = 'https://coins.llama.fi'
-  private readonly limit = pLimit(6)
+  // Increased from 6 to 24 to support parallel service execution
+  // This allows 4 services to run with ~6 slots each
+  private readonly limit = pLimit(
+    process.env.DEFILLAMA_CONCURRENT_LIMIT ? parseInt(process.env.DEFILLAMA_CONCURRENT_LIMIT, 10) : 24
+  )
   private readonly BATCH_SIZE = 100
 
   async fetchPrices(chainId: number, tokens: ERC20Token[]): Promise<Map<string, Price>> {

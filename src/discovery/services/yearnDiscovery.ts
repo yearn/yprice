@@ -292,20 +292,28 @@ export class YearnDiscovery implements Discovery {
   private async discoverFromV3Registries(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
 
-    for (const registryAddress of this.v3RegistryAddresses) {
+    // Process all V3 registries in parallel for better performance
+    const registryPromises = this.v3RegistryAddresses.map(async (registryAddress) => {
       try {
         const registryTokens = await this.discoverFromSpecificRegistry(registryAddress, 'v3')
-        tokens.push(...registryTokens)
         logger.debug(
           `Discovered ${registryTokens.length} tokens from V3 registry ${registryAddress} on chain ${this.chainId}`,
         )
+        return registryTokens
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
         logger.warn(
           `V3 registry ${registryAddress} discovery failed for chain ${this.chainId}: ${(errorMsg || 'Unknown error').substring(0, 100)}`,
         )
+        return [] // Return empty array on error to continue with other registries
       }
-    }
+    })
+
+    // Wait for all registries to complete and collect results
+    const allResults = await Promise.all(registryPromises)
+    allResults.forEach((registryTokens) => {
+      tokens.push(...registryTokens)
+    })
 
     return tokens
   }

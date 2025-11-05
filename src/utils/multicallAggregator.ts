@@ -45,10 +45,18 @@ export class MulticallAggregator {
   private limiters: Map<number, ReturnType<typeof pLimit>> = new Map()
 
   constructor() {
-    // Initialize rate limiters for each chain (10 concurrent multicalls max)
+    // Initialize rate limiters for each chain
+    // Increased from 10 to 40 to support parallel service execution
+    // This allows 4 services to run with ~10 slots each
+    const concurrentLimit = process.env.MULTICALL_CONCURRENT_LIMIT
+      ? parseInt(process.env.MULTICALL_CONCURRENT_LIMIT, 10)
+      : 40
+
     ;[1, 10, 100, 137, 250, 8453, 42161].forEach((chainId) => {
-      this.limiters.set(chainId, pLimit(10))
+      this.limiters.set(chainId, pLimit(concurrentLimit))
     })
+
+    logger.debug(`MulticallAggregator initialized with ${concurrentLimit} concurrent multicalls per chain`)
   }
 
   /**
