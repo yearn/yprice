@@ -3,7 +3,7 @@ import dotenv from 'dotenv'
 import { logger } from 'utils/index'
 import { SUPPORTED_CHAINS } from 'models/types'
 import { chainDiscoveryServices, chainFetchers } from 'discovery/config'
-import { writeFileSync, mkdirSync, existsSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
 import axios from 'axios'
 import path from 'path'
 import tokenDiscoveryService from 'discovery/tokenDiscoveryService'
@@ -25,6 +25,18 @@ interface SourceAnalysis {
   extra_tokens: string[]
 }
 
+interface CompleteComparison {
+  our_total_unique_tokens: number
+  ydaemon_total_tokens: number
+  tokens_we_have_ydaemon_doesnt: number
+  tokens_ydaemon_has_we_dont: number
+  tokens_in_both: number
+  accurate_matches: number
+  accuracy_pct: number
+  our_coverage_of_ydaemon: number
+  ydaemon_coverage_of_ours: number
+}
+
 interface SummaryReport {
   chain: number
   timestamp: string
@@ -32,6 +44,7 @@ interface SummaryReport {
   sources: Record<string, SourceAnalysis>
   durations_ms?: Record<string, number>
   slow_sources_ms?: { source: string; duration_ms: number }[]
+  complete_comparison?: CompleteComparison
 }
 
 // Ydaemon API endpoints by chain
@@ -457,6 +470,189 @@ async function analyzeSources() {
       PARALLELISM,
     )
 
+    // Aggregate all unique tokens discovered across all sources
+    logger.info('\n🔄 Aggregating all discovered tokens for complete comparison...')
+    const allDiscoveredPrices = new Map<string, { price: number, sources: string[] }>()
+    let missingTokenInfo = new Map<string, { name: string; symbol: string }>()
+
+    // Collect all prices from all sources
+    Object.entries(summaryReport.sources).forEach(([sourceName, analysis]) => {
+      if (sourceName === 'defillama') return // Skip defillama as it's just the pre-warm
+
+      // Read the CSV file for this source to get actual prices
+      try {
+        const csvPath = path.join(outputDir, `${sourceName}.csv`)
+        if (existsSync(csvPath)) {
+          const csvContent = readFileSync(csvPath, 'utf-8')
+          const lines = csvContent.split('\n').slice(1) // Skip header
+
+          lines.forEach(line => {
+            if (!line.trim()) return
+            const parts = line.split(',')
+            const address = parts[0]?.replace(/"/g, '').toLowerCase()
+            const sourcePrice = parts[1]?.replace(/"/g, '')
+
+            if (address && sourcePrice && sourcePrice !== '') {
+              const price = parseFloat(sourcePrice)
+              if (!isNaN(price) && price > 0) {
+                const existing = allDiscoveredPrices.get(address)
+                if (existing) {
+                  existing.sources.push(sourceName)
+                } else {
+                  allDiscoveredPrices.set(address, { price, sources: [sourceName] })
+                }
+              }
+            }
+          })
+        }
+      } catch (error) {
+        logger.debug(`Could not read CSV for ${sourceName}: ${error}`)
+      }
+    })
+
+    // Complete comparison: Our aggregate vs ydaemon
+    const completeComparison = {
+      our_total_unique_tokens: allDiscoveredPrices.size,
+      ydaemon_total_tokens: ydaemonPrices.size,
+      tokens_we_have_ydaemon_doesnt: 0,
+      tokens_ydaemon_has_we_dont: 0,
+      tokens_in_both: 0,
+      accurate_matches: 0,
+      accuracy_pct: 0,
+      our_coverage_of_ydaemon: 0,
+      ydaemon_coverage_of_ours: 0,
+    }
+
+    // Count overlaps
+    allDiscoveredPrices.forEach((data, address) => {
+      if (ydaemonPrices.has(address)) {
+        completeComparison.tokens_in_both++
+        const ydaemonPrice = ydaemonPrices.get(address)!
+        const diffPct = calculatePriceDifference(data.price, ydaemonPrice)
+        if (diffPct <= 5) {
+          completeComparison.accurate_matches++
+        }
+      } else {
+        completeComparison.tokens_we_have_ydaemon_doesnt++
+      }
+    })
+
+    ydaemonPrices.forEach((_, address) => {
+      if (!allDiscoveredPrices.has(address)) {
+        completeComparison.tokens_ydaemon_has_we_dont++
+      }
+    })
+
+    completeComparison.accuracy_pct = completeComparison.tokens_in_both > 0
+      ? parseFloat(((completeComparison.accurate_matches / completeComparison.tokens_in_both) * 100).toFixed(2))
+      : 0
+
+    completeComparison.our_coverage_of_ydaemon = parseFloat(
+      ((completeComparison.tokens_in_both / ydaemonPrices.size) * 100).toFixed(2)
+    )
+
+    completeComparison.ydaemon_coverage_of_ours = allDiscoveredPrices.size > 0
+      ? parseFloat(((completeComparison.tokens_in_both / allDiscoveredPrices.size) * 100).toFixed(2))
+      : 0
+
+    // Add complete comparison to summary report
+    summaryReport.complete_comparison = completeComparison
+
+    // Fetch names for tokens we're missing from ydaemon
+    logger.info('\n🔍 Fetching names for tokens we are missing from ydaemon...')
+    const missingTokenAddresses: string[] = []
+
+    ydaemonPrices.forEach((_, address) => {
+      if (!allDiscoveredPrices.has(address)) {
+        missingTokenAddresses.push(address)
+      }
+    })
+
+    // Batch fetch token names and symbols using multicall
+    if (missingTokenAddresses.length > 0) {
+      try {
+        const { batchReadContracts } = await import('utils/viemClients')
+        const nameSymbolContracts = missingTokenAddresses.flatMap((address) => [
+          {
+            address: address as `0x${string}`,
+            abi: [{ name: 'name', type: 'function', inputs: [], outputs: [{ type: 'string' }], stateMutability: 'view' }],
+            functionName: 'name' as const,
+            args: [],
+          },
+          {
+            address: address as `0x${string}`,
+            abi: [{ name: 'symbol', type: 'function', inputs: [], outputs: [{ type: 'string' }], stateMutability: 'view' }],
+            functionName: 'symbol' as const,
+            args: [],
+          },
+        ])
+
+        // Process in chunks to avoid overwhelming the RPC
+        const chunkSize = 500
+        for (let i = 0; i < nameSymbolContracts.length; i += chunkSize * 2) {
+          const chunk = nameSymbolContracts.slice(i, i + chunkSize * 2)
+          const results = await batchReadContracts(chainId, chunk)
+
+          // Process results (each token has 2 results: name and symbol)
+          for (let j = 0; j < chunk.length; j += 2) {
+            const addressIndex = (i + j) / 2
+            const address = missingTokenAddresses[addressIndex]
+            if (address) {
+              const nameResult = results[j]
+              const symbolResult = results[j + 1]
+
+              const name = nameResult?.status === 'success' && nameResult.result ? String(nameResult.result) : ''
+              const symbol = symbolResult?.status === 'success' && symbolResult.result ? String(symbolResult.result) : ''
+
+              if (name || symbol) {
+                missingTokenInfo.set(address.toLowerCase(), { name, symbol })
+              }
+            }
+          }
+        }
+
+        logger.info(`Fetched names for ${missingTokenInfo.size} out of ${missingTokenAddresses.length} missing tokens`)
+      } catch (error) {
+        logger.warn(`Could not fetch token names: ${error}`)
+      }
+    }
+
+    // Save complete comparison CSV with token names
+    const comparisonCsvRows: string[] = [
+      'address,token_name,token_symbol,our_price_usd,ydaemon_price_usd,price_diff_pct,sources,status'
+    ]
+
+    // Add all our tokens
+    allDiscoveredPrices.forEach((data, address) => {
+      const ydaemonPrice = ydaemonPrices.get(address)
+      if (ydaemonPrice) {
+        const diffPct = calculatePriceDifference(data.price, ydaemonPrice)
+        comparisonCsvRows.push(
+          `"${address}","","","${data.price.toFixed(6)}","${ydaemonPrice.toFixed(6)}","${diffPct.toFixed(2)}","${data.sources.join(';')}","both"`
+        )
+      } else {
+        comparisonCsvRows.push(
+          `"${address}","","","${data.price.toFixed(6)}","","","${data.sources.join(';')}","only_ours"`
+        )
+      }
+    })
+
+    // Add ydaemon-only tokens with their names
+    ydaemonPrices.forEach((price, address) => {
+      if (!allDiscoveredPrices.has(address)) {
+        const tokenInfo = missingTokenInfo.get(address.toLowerCase())
+        const name = tokenInfo?.name || ''
+        const symbol = tokenInfo?.symbol || ''
+        comparisonCsvRows.push(
+          `"${address}","${name}","${symbol}","","${price.toFixed(6)}","","","only_ydaemon"`
+        )
+      }
+    })
+
+    const comparisonCsvPath = path.join(outputDir, 'complete-comparison.csv')
+    writeFileSync(comparisonCsvPath, comparisonCsvRows.join('\n'))
+    logger.info(`Saved complete comparison to ${comparisonCsvPath}`)
+
     // Save summary report
     const summaryPath = path.join(outputDir, 'summary-report.json')
     writeFileSync(summaryPath, JSON.stringify(summaryReport, null, 2))
@@ -483,6 +679,76 @@ async function analyzeSources() {
           console.log(`  Duration: ${dur}ms${dur > 5000 ? ' (SLOW)' : ''}`)
         }
       })
+
+    // Print complete comparison
+    if (summaryReport.complete_comparison) {
+      console.log('\n' + '='.repeat(60))
+      console.log('📊 COMPLETE COMPARISON: All Our Sources vs Ydaemon')
+      console.log('='.repeat(60))
+
+      const comp = summaryReport.complete_comparison
+      console.log('\n🔢 Token Counts:')
+      console.log(`  Our Total Unique Tokens: ${comp.our_total_unique_tokens}`)
+      console.log(`  Ydaemon Total Tokens: ${comp.ydaemon_total_tokens}`)
+
+      console.log('\n🔄 Coverage Analysis:')
+      console.log(`  Tokens in Both: ${comp.tokens_in_both}`)
+      console.log(`  Tokens We Have That Ydaemon Doesn't: ${comp.tokens_we_have_ydaemon_doesnt}`)
+      console.log(`  Tokens Ydaemon Has That We Don't: ${comp.tokens_ydaemon_has_we_dont}`)
+
+      console.log('\n📈 Coverage Metrics:')
+      console.log(`  Our Coverage of Ydaemon: ${comp.our_coverage_of_ydaemon}% (${comp.tokens_in_both}/${comp.ydaemon_total_tokens})`)
+      console.log(`  Ydaemon Coverage of Ours: ${comp.ydaemon_coverage_of_ours}% (${comp.tokens_in_both}/${comp.our_total_unique_tokens})`)
+
+      console.log('\n✅ Accuracy:')
+      console.log(`  Accurate Matches: ${comp.accurate_matches}/${comp.tokens_in_both} (${comp.accuracy_pct}% within 5% price difference)`)
+
+      // Analyze missing token types if we fetched their names
+      const missingTokenTypes = new Map<string, number>()
+      ydaemonPrices.forEach((_, address) => {
+        if (!allDiscoveredPrices.has(address)) {
+          const tokenInfo = missingTokenInfo.get(address.toLowerCase())
+          if (tokenInfo?.symbol) {
+            // Categorize by common patterns in symbols
+            let category = 'Other'
+            const symbol = tokenInfo.symbol.toUpperCase()
+
+            if (symbol.includes('LP') || symbol.includes('-')) {
+              category = 'LP/Pool Tokens'
+            } else if (symbol.startsWith('YV') || symbol.includes('VAULT')) {
+              category = 'Vault Tokens'
+            } else if (symbol.startsWith('A') || symbol.startsWith('C') || symbol.includes('DEBT')) {
+              category = 'Lending Tokens'
+            } else if (symbol.startsWith('W') && symbol !== 'WETH' && symbol !== 'WBTC') {
+              category = 'Wrapped Tokens'
+            } else if (symbol.includes('USD') || symbol.includes('DAI') || symbol.includes('USDT') || symbol.includes('USDC')) {
+              category = 'Stablecoins'
+            } else if (tokenInfo.name?.toLowerCase().includes('curve') || symbol.includes('CRV')) {
+              category = 'Curve Related'
+            } else if (tokenInfo.name?.toLowerCase().includes('uniswap') || symbol.includes('UNI')) {
+              category = 'Uniswap Related'
+            }
+
+            missingTokenTypes.set(category, (missingTokenTypes.get(category) || 0) + 1)
+          }
+        }
+      })
+
+      if (missingTokenTypes.size > 0) {
+        console.log('\n🔍 Missing Token Categories (from ' + missingTokenInfo.size + ' identified):')
+        const sortedCategories = Array.from(missingTokenTypes.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+
+        sortedCategories.forEach(([category, count]) => {
+          console.log(`  ${category}: ${count} tokens`)
+        })
+      }
+
+      console.log('\n📁 Complete comparison saved to: complete-comparison.csv')
+      console.log('    (includes token names/symbols for missing tokens)')
+      console.log('='.repeat(60))
+    }
 
     process.exit(0)
   } catch (error) {

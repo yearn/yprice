@@ -10,7 +10,7 @@ interface TokenListToken {
   chainId?: number
 }
 
-// Token list URLs by chain - Updated with working endpoints
+// Token list URLs by chain
 const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   // Ethereum
   1: [
