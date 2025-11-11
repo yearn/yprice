@@ -292,6 +292,12 @@ function analyzeSource(
   }
 }
 
+// Map price fetchers to their required discovery services
+const DISCOVERY_DEPENDENCIES: Record<string, string> = {
+  'yearn-vault': 'yearn',
+  // Add other dependencies as needed in the future
+}
+
 async function analyzeSources() {
   try {
     // Parse command line arguments
@@ -369,7 +375,50 @@ async function analyzeSources() {
     // Pre-discover tokens for price fetchers (using tokenlist as a baseline) and prepare shared cache
     let baselineTokens: ERC20Token[] = []
     const sharedPrices: Map<string, Price> = new Map()
-    if (priceFetchers.length > 0) {
+
+    // Check if we need to run a discovery service for a single price fetcher
+    if (serviceFlag && DISCOVERY_DEPENDENCIES[serviceFlag]) {
+      const requiredDiscovery = DISCOVERY_DEPENDENCIES[serviceFlag]
+      const availableDiscoveryServices = chainDiscoveryServices[chainId] || []
+
+      if (availableDiscoveryServices.includes(requiredDiscovery)) {
+        logger.info(`\n📊 Running required discovery service '${requiredDiscovery}' for '${serviceFlag}'...`)
+        try {
+          // First get baseline tokens from tokenlist
+          const tokenlistTokens = await tokenDiscoveryService.discoverTokensForService(
+            chainId,
+            'tokenlist',
+          )
+          baselineTokens = tokenlistTokens.get(chainId) || []
+
+          // Then run the required discovery service
+          const discoveredTokens = await tokenDiscoveryService.discoverTokensForService(
+            chainId,
+            requiredDiscovery,
+          )
+          const serviceTokens = discoveredTokens.get(chainId) || []
+
+          // Deduplicate tokens (service tokens take precedence)
+          const tokenMap = new Map<string, ERC20Token>()
+          baselineTokens.forEach(token => tokenMap.set(token.address.toLowerCase(), token))
+          serviceTokens.forEach(token => tokenMap.set(token.address.toLowerCase(), token))
+          baselineTokens = Array.from(tokenMap.values())
+
+          logger.info(`Discovered ${serviceTokens.length} tokens from ${requiredDiscovery}, total: ${baselineTokens.length} tokens`)
+
+          // For yearn-vault, we also need to fetch prices for underlying tokens first
+          if (serviceFlag === 'yearn-vault') {
+            logger.info(`\n💰 Pre-fetching prices for underlying tokens using defillama...`)
+            const fetcher = new PriceFetcherOrchestrator()
+            fetcher.setFetcherFilter('defillama')
+            const underlyingPrices = await fetcher.fetchPrices(chainId, baselineTokens, sharedPrices)
+            logger.info(`Pre-fetched ${underlyingPrices.size} prices for underlying tokens`)
+          }
+        } catch (error) {
+          logger.warn(`Failed to run discovery service ${requiredDiscovery}: ${error}`)
+        }
+      }
+    } else if (priceFetchers.length > 0) {
       logger.info(`\n📊 Pre-discovering tokens for chain ${chainId} to use with price fetchers...`)
       try {
         const tokensByChain = await tokenDiscoveryService.discoverTokensForService(
