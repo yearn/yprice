@@ -3,7 +3,6 @@ export * from './services/curveFactories'
 export * from './services/defillama'
 export * from './services/erc4626'
 export * from './services/gamma'
-export * from './services/lensOracle'
 export * from './services/pendle'
 export * from './services/velodrome'
 export * from './services/yearnVault'
@@ -30,7 +29,6 @@ export class PriceFetcherOrchestrator {
   private gamma = new GammaFetcher()
   private pendle = new PendleFetcher()
   private curveAmm = new CurveAmmFetcher()
-  // private lensOracle = new LensOracleFetcher()
   private erc4626 = new ERC4626Fetcher()
   private yearnVault = new YearnVaultFetcher()
   private fetcherFilter?: string

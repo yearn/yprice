@@ -1,10 +1,8 @@
 import tokenDiscoveryService from 'discovery/tokenDiscoveryService'
 import { PriceFetcherOrchestrator } from 'fetchers/index'
-import { chunk } from 'lodash'
 import { ERC20Token, Price, WETH_ADDRESSES } from 'models/index'
 import { getStorage, StorageWrapper } from 'storage/index'
-import { betterLogger } from 'utils/betterLogger'
-import { logger } from 'utils/index'
+import { betterLogger, chunk, logger } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 export class PriceService {

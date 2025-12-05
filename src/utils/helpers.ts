@@ -1,7 +1,12 @@
-import lodash from 'lodash'
 import { getAddress } from 'viem'
 
-const { chunk } = lodash
+export function chunk<T>(array: T[], size: number): T[][] {
+  const result: T[][] = []
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size))
+  }
+  return result
+}
 
 export const toChecksumAddress = (address: string): string => {
   try {
@@ -70,8 +75,6 @@ export const stringToBool = (value?: string): boolean =>
   !!value && ['true', '1', 'yes', 'on'].includes(value.toLowerCase())
 
 export const safeString = (value: any, defaultValue = ''): string => value ?? defaultValue
-
-export { chunk }
 
 export const deduplicateTokens = <T extends { chainId: number; address: string }>(
   tokens: T[],

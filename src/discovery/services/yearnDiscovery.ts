@@ -1,7 +1,12 @@
 import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { uniqBy } from 'lodash'
-import { batchReadContracts, discoveryPriceCache, getPublicClient, logger } from 'utils/index'
+import {
+  batchReadContracts,
+  deduplicateTokens,
+  discoveryPriceCache,
+  getPublicClient,
+  logger,
+} from 'utils/index'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 interface KongVault {
@@ -113,7 +118,7 @@ export class YearnDiscovery implements Discovery {
       )
     }
 
-    return uniqBy(tokens, (token) => `${token.chainId}-${token.address.toLowerCase()}`)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromKong(): Promise<TokenInfo[]> {
@@ -248,17 +253,27 @@ export class YearnDiscovery implements Discovery {
         const vaultAddress = vaultAddresses[i]
         if (!vaultAddress) continue // Skip if undefined
 
-        const tokenResult = results[i * 2]      // V2 token() result
-        const assetResult = results[i * 2 + 1]  // V3 asset() result
+        const tokenResult = results[i * 2] // V2 token() result
+        const assetResult = results[i * 2 + 1] // V3 asset() result
 
         // Use whichever succeeds (V2 token or V3 asset)
         let underlyingAddress: Address | undefined
         let vaultVersion: 'v2' | 'v3' | undefined
 
-        if (tokenResult && tokenResult.status === 'success' && tokenResult.result && tokenResult.result !== zeroAddress) {
+        if (
+          tokenResult &&
+          tokenResult.status === 'success' &&
+          tokenResult.result &&
+          tokenResult.result !== zeroAddress
+        ) {
           underlyingAddress = tokenResult.result
           vaultVersion = 'v2'
-        } else if (assetResult && assetResult.status === 'success' && assetResult.result && assetResult.result !== zeroAddress) {
+        } else if (
+          assetResult &&
+          assetResult.status === 'success' &&
+          assetResult.result &&
+          assetResult.result !== zeroAddress
+        ) {
           underlyingAddress = assetResult.result
           vaultVersion = 'v3'
         }

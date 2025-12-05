@@ -2,9 +2,11 @@ import { DISCOVERY_CONFIGS } from 'discovery/config'
 import { AAVEDiscovery } from 'discovery/services/aaveDiscovery'
 import { BalancerDiscovery } from 'discovery/services/balancerDiscovery'
 import { CompoundDiscovery } from 'discovery/services/compoundDiscovery'
-import { CurveDiscovery } from 'discovery/services/curveDiscovery'
-import { CurveFactoriesDiscovery } from 'discovery/services/curveFactories'
-import { CurveRegistriesDiscovery } from 'discovery/services/curveRegistries'
+import {
+  CurveDiscovery,
+  CurveFactoriesDiscovery,
+  CurveRegistriesDiscovery,
+} from 'discovery/services/curveDiscovery'
 import { GammaDiscovery } from 'discovery/services/gammaDiscovery'
 import { GenericVaultDiscovery } from 'discovery/services/genericVaultDiscovery'
 import { PendleDiscovery } from 'discovery/services/pendleDiscovery'

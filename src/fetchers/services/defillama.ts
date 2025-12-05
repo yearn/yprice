@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { find, forEach, partition, reduce } from 'lodash'
 import { ERC20Token, LlamaPrice, Price, PriceSource } from 'models/index'
 import pLimit from 'p-limit'
 import { addressEquals, chunk, logger, parseUnits } from 'utils/index'
@@ -55,7 +54,9 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
   // Increased from 6 to 24 to support parallel service execution
   // This allows 4 services to run with ~6 slots each
   private readonly limit = pLimit(
-    process.env.DEFILLAMA_CONCURRENT_LIMIT ? parseInt(process.env.DEFILLAMA_CONCURRENT_LIMIT, 10) : 24
+    process.env.DEFILLAMA_CONCURRENT_LIMIT
+      ? parseInt(process.env.DEFILLAMA_CONCURRENT_LIMIT, 10)
+      : 24,
   )
   private readonly BATCH_SIZE = 100
 
@@ -76,11 +77,11 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       chainId,
       tokens.map((t) => t.address),
     )
-    forEach(Array.from(cachedPrices.entries()), ([address, price]) => {
+    for (const [address, price] of cachedPrices.entries()) {
       prices.set(address, price)
-    })
+    }
 
-    const [, uncachedTokens] = partition(tokens, (t) => prices.has(t.address.toLowerCase()))
+    const uncachedTokens = tokens.filter((t) => !prices.has(t.address.toLowerCase()))
 
     if (uncachedTokens.length === 0) {
       logger.debug(`DeFiLlama: All ${tokens.length} prices from cache`)
@@ -98,21 +99,17 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
       ),
     )
 
-    const symbolMap = reduce(
-      tokens,
-      (acc, t) => {
-        acc.set(t.address.toLowerCase(), t.symbol)
-        return acc
-      },
-      new Map<string, string>(),
-    )
+    const symbolMap = new Map<string, string>()
+    for (const t of tokens) {
+      symbolMap.set(t.address.toLowerCase(), t.symbol)
+    }
 
-    forEach(results, (chunkPrices) => {
-      forEach(Array.from(chunkPrices.entries()), ([address, price]) => {
+    for (const chunkPrices of results) {
+      for (const [address, price] of chunkPrices.entries()) {
         prices.set(address, price)
         priceCache.set(chainId, address, price, symbolMap.get(address))
-      })
-    })
+      }
+    }
 
     this.handleAjnaTokens(chainId, tokens, prices)
 
@@ -165,10 +162,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           }
         }
 
-        forEach(Object.entries(response.data.coins), ([key, data]) => {
+        for (const [key, data] of Object.entries(response.data.coins)) {
           const address = key.split(':')[1]
           if (address && data.price > 0) {
-            const token = find(tokens, (t) => addressEquals(t.address, address))
+            const token = tokens.find((t) => addressEquals(t.address, address))
             if (token) {
               prices.set(token.address.toLowerCase(), {
                 address: token.address,
@@ -177,7 +174,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
               })
             }
           }
-        })
+        }
       }
     } catch (error: any) {
       if (error.response?.status === 413) {
@@ -193,9 +190,9 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           recovered = true
           for (const c of retryChunks) {
             const subPrices = await this.fetchChunkPrices(chainName, chainId, c)
-            forEach(Array.from(subPrices.entries()), ([address, price]) => {
+            for (const [address, price] of subPrices.entries()) {
               prices.set(address, price)
-            })
+            }
           }
           break
         }
@@ -203,9 +200,9 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           // Final attempt: process individually
           for (const t of tokens) {
             const subPrices = await this.fetchChunkPrices(chainName, chainId, [t])
-            forEach(Array.from(subPrices.entries()), ([address, price]) => {
+            for (const [address, price] of subPrices.entries()) {
               prices.set(address, price)
-            })
+            }
           }
         }
       } else {
@@ -227,11 +224,10 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
 
     const mainnetPrices = await this.fetchChunkPrices('ethereum', 1, mainnetTokens)
 
-    forEach(tokens, (token) => {
+    for (const token of tokens) {
       const mainnetInfo = KATANA_TOKEN_TO_MAINNET[token.name]
       if (mainnetInfo) {
-        const mainnetToken = find(
-          mainnetTokens,
+        const mainnetToken = mainnetTokens.find(
           (t) => t.address.toLowerCase() === mainnetInfo.address.toLowerCase(),
         )
         if (mainnetToken) {
@@ -246,29 +242,26 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           }
         }
       }
-    })
+    }
 
     return prices
   }
 
   private async getMainnetTokensForKatana(tokens: ERC20Token[]): Promise<ERC20Token[]> {
-    return reduce(
-      tokens,
-      (acc: ERC20Token[], token) => {
-        const mainnetInfo = KATANA_TOKEN_TO_MAINNET[token.name]
-        if (mainnetInfo) {
-          acc.push({
-            address: mainnetInfo.address,
-            symbol: token.symbol,
-            name: mainnetInfo.name,
-            decimals: token.decimals,
-            chainId: 1,
-          })
-        }
-        return acc
-      },
-      [],
-    )
+    const result: ERC20Token[] = []
+    for (const token of tokens) {
+      const mainnetInfo = KATANA_TOKEN_TO_MAINNET[token.name]
+      if (mainnetInfo) {
+        result.push({
+          address: mainnetInfo.address,
+          symbol: token.symbol,
+          name: mainnetInfo.name,
+          decimals: token.decimals,
+          chainId: 1,
+        })
+      }
+    }
+    return result
   }
 
   private handleAjnaTokens(
@@ -279,7 +272,7 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     const ajnaAddress = AJNA_TOKENS[chainId]
     if (!ajnaAddress) return
 
-    const ajnaToken = find(tokens, (t) => addressEquals(t.address, ajnaAddress))
+    const ajnaToken = tokens.find((t) => addressEquals(t.address, ajnaAddress))
     if (!ajnaToken || prices.has(ajnaToken.address.toLowerCase())) return
 
     const mainnetAjnaAddress = AJNA_TOKENS[1]

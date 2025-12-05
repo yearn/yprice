@@ -56,7 +56,9 @@ export class MulticallAggregator {
       this.limiters.set(chainId, pLimit(concurrentLimit))
     })
 
-    logger.debug(`MulticallAggregator initialized with ${concurrentLimit} concurrent multicalls per chain`)
+    logger.debug(
+      `MulticallAggregator initialized with ${concurrentLimit} concurrent multicalls per chain`,
+    )
   }
 
   /**

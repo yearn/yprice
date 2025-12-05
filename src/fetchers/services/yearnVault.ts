@@ -91,7 +91,11 @@ export class YearnVaultFetcher {
 
       // Batch all on-chain calls together for maximum efficiency
       const allContracts: any[] = []
-      const contractInfo: { vault: ERC20Token; type: 'v2' | 'v3' | 'unknown'; dataIndex: number }[] = []
+      const contractInfo: {
+        vault: ERC20Token
+        type: 'v2' | 'v3' | 'unknown'
+        dataIndex: number
+      }[] = []
 
       // Add V2 vaults (known version)
       v2VaultsNeedingFetch.forEach((vault) => {
