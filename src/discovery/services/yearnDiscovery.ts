@@ -1,12 +1,12 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
 import {
   batchReadContracts,
   deduplicateTokens,
-  discoveryPriceCache,
+  fetchJson,
   getPublicClient,
   logger,
 } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 interface KongVault {
@@ -27,20 +27,9 @@ interface KongGraphQLResponse {
   }
 }
 
-const REGISTRY_ADDRESSES: Record<number, string> = {
-  1: '0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804',
-  10: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
-  137: '0x32bF3dc86E278F17D6449f88A9d30385106319Dc',
-  250: '0x727fe1759430df13655ddb0731dE0D0FDE929b04',
-  42161: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f',
-}
+const REGISTRY_ADDRESSES: Record<number, string> = {}
 
-const V3_REGISTRY_ADDRESSES: Record<number, string[]> = {
-  1: [
-    '0xd40ecF29e001c76Dcc4cC0D9cd50520CE845B038', // Current V3 Registry
-    '0xff31A1B020c868F6eA3f61Eb953344920EeCA3af', // Legacy V3 Registry
-  ],
-}
+const V3_REGISTRY_ADDRESSES: Record<number, string[]> = {}
 
 const REGISTRY_ABI = parseAbi([
   'function numVaults() view returns (uint256)',
@@ -141,19 +130,14 @@ export class YearnDiscovery implements Discovery {
         }
       `
 
-      const response = await axios.post<KongGraphQLResponse>(
-        this.kongUrl,
-        { query },
-        {
-          timeout: 15000, // Reduced from 30s since we now run in parallel
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'yearn-pricing-service',
-          },
-        },
-      )
+      const data = await fetchJson<KongGraphQLResponse>(this.kongUrl, {
+        method: 'POST',
+        data: { query },
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' },
+      })
 
-      const vaults = response.data?.data?.vaults
+      const vaults = data?.data?.vaults
 
       if (Array.isArray(vaults)) {
         logger.debug(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`)
@@ -170,13 +154,13 @@ export class YearnDiscovery implements Discovery {
 
             // Cache pricePerShare data for the vault
             if (vault.pricePerShare) {
-              const pricePerShare = BigInt(vault.pricePerShare)
+              const pricePerShare = BigInt(Math.round(Number(vault.pricePerShare)))
               const underlyingAddress = vault.asset?.address || vault.token
               const underlyingDecimals = vault.asset?.decimals
               // Determine vault version based on whether asset field exists
               const vaultVersion = vault.asset?.address ? 'v3' : 'v2'
 
-              discoveryPriceCache.set(this.chainId, vault.address, undefined, 'yearn-vault', {
+              priceCache.setDiscovered(this.chainId, vault.address, undefined, 'yearn-vault', {
                 pricePerShare,
                 underlyingAddress: underlyingAddress?.toLowerCase(),
                 underlyingDecimals,
@@ -286,9 +270,9 @@ export class YearnDiscovery implements Discovery {
           })
 
           // Cache the vault version for later use
-          const cachedData = discoveryPriceCache.get(this.chainId, vaultAddress)
-          discoveryPriceCache.set(this.chainId, vaultAddress, undefined, 'yearn-vault', {
-            ...cachedData?.data,
+          const cachedData = priceCache.getDiscovered(this.chainId, vaultAddress)
+          priceCache.setDiscovered(this.chainId, vaultAddress, undefined, 'yearn-vault', {
+            ...cachedData?.metadata,
             underlyingAddress: underlyingAddress.toLowerCase(),
             vaultVersion,
           })
@@ -392,9 +376,9 @@ export class YearnDiscovery implements Discovery {
         })
 
         // Cache vault version for later use
-        const cachedData = discoveryPriceCache.get(this.chainId, vaultAddress)
-        discoveryPriceCache.set(this.chainId, vaultAddress, undefined, 'yearn-vault', {
-          ...cachedData?.data,
+        const cachedData = priceCache.getDiscovered(this.chainId, vaultAddress)
+        priceCache.setDiscovered(this.chainId, vaultAddress, undefined, 'yearn-vault', {
+          ...cachedData?.metadata,
           vaultVersion: version,
         })
       }

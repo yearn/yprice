@@ -15,8 +15,36 @@ export class RedisStorage {
   private cacheTTL: number
   private keyPrefix: string = 'yprice'
 
-  constructor(cacheTTL: number = 60) {
+  private consecutiveFailures = 0
+  private circuitOpen = false
+  private static readonly FAILURE_THRESHOLD = 1
+  private onCircuitOpen?: () => void
+
+  private handleRedisError(operation: string, error: unknown): void {
+    this.consecutiveFailures++
+    if (this.consecutiveFailures >= RedisStorage.FAILURE_THRESHOLD && !this.circuitOpen) {
+      this.circuitOpen = true
+      logger.error(
+        `Redis circuit breaker open after ${this.consecutiveFailures} failures — skipping subsequent operations`,
+      )
+      this.onCircuitOpen?.()
+    }
+    if (!this.circuitOpen) {
+      logger.error(`Redis ${operation} failed:`, error)
+    }
+  }
+
+  private handleRedisSuccess(): void {
+    if (this.circuitOpen) {
+      logger.info('Redis connection restored')
+    }
+    this.consecutiveFailures = 0
+    this.circuitOpen = false
+  }
+
+  constructor(cacheTTL: number = 60, onCircuitOpen?: () => void) {
     this.cacheTTL = cacheTTL
+    this.onCircuitOpen = onCircuitOpen
 
     const redisUrl = process.env.UPSTASH_REDIS_REST_URL
     const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN
@@ -44,57 +72,72 @@ export class RedisStorage {
   }
 
   public async storePrices(chainId: number, prices: Price[]): Promise<void> {
-    const timestamp = Date.now()
-    const key = this.getChainKey(chainId)
+    if (this.circuitOpen) return
 
-    // Get existing chain data to merge with new prices
-    const existingData = await this.getChainData(chainId)
-    const chainData: ChainPriceData = existingData || {}
+    try {
+      const timestamp = Date.now()
+      const key = this.getChainKey(chainId)
 
-    // Update chain data with new prices
-    prices.forEach((price) => {
-      chainData[price.address.toLowerCase()] = {
-        ...price,
-        address: price.address.toLowerCase(),
-        timestamp,
+      const chainData: ChainPriceData = (await this.getChainData(chainId)) ?? {}
+
+      for (const price of prices) {
+        chainData[price.address.toLowerCase()] = {
+          ...price,
+          address: price.address.toLowerCase(),
+          timestamp,
+        }
       }
-    })
 
-    // Store entire chain data
-    const dataStr = JSON.stringify(chainData, (_, v) => (typeof v === 'bigint' ? v.toString() : v))
+      const dataStr = JSON.stringify(chainData, (_, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      )
 
-    if (this.cacheTTL > 0) {
-      await this.redis.setex(key, this.cacheTTL, dataStr)
-    } else {
-      await this.redis.set(key, dataStr)
+      if (this.cacheTTL > 0) {
+        await this.redis.setex(key, this.cacheTTL, dataStr)
+      } else {
+        await this.redis.set(key, dataStr)
+      }
+
+      this.handleRedisSuccess()
+      logger.debug(`Stored ${prices.length} prices for chain ${chainId} in Redis`)
+    } catch (error) {
+      this.handleRedisError(`storePrices(chain=${chainId})`, error)
+    }
+  }
+
+  /**
+   * Parse raw Redis data into typed ChainPriceData, handling both
+   * string and pre-parsed object responses and restoring BigInt prices.
+   */
+  private parseChainData(raw: unknown): ChainPriceData | null {
+    if (!raw) return null
+
+    const chainData: ChainPriceData =
+      typeof raw === 'string' ? (JSON.parse(raw) as ChainPriceData) : (raw as ChainPriceData)
+
+    for (const entry of Object.values(chainData)) {
+      if (typeof entry.price === 'string') {
+        entry.price = BigInt(entry.price)
+      }
     }
 
-    logger.debug(`Stored ${prices.length} prices for chain ${chainId} in Redis`)
+    return chainData
   }
 
   private async getChainData(chainId: number): Promise<ChainPriceData | null> {
-    const key = this.getChainKey(chainId)
-    const data = await this.redis.get(key)
+    if (this.circuitOpen) return null
 
-    if (!data) return null
+    let data: unknown
+    try {
+      data = await this.redis.get(this.getChainKey(chainId))
+      this.handleRedisSuccess()
+    } catch (error) {
+      this.handleRedisError(`getChainData(chain=${chainId})`, error)
+      return null
+    }
 
     try {
-      // Handle both string and object responses from Redis
-      let chainData: ChainPriceData
-      if (typeof data === 'string') {
-        chainData = JSON.parse(data) as ChainPriceData
-      } else {
-        // If data is already an object, use it directly
-        chainData = data as ChainPriceData
-      }
-
-      // Convert string prices back to bigint
-      for (const entry of Object.values(chainData)) {
-        if (typeof entry.price === 'string') {
-          entry.price = BigInt(entry.price)
-        }
-      }
-      return chainData
+      return this.parseChainData(data)
     } catch (error) {
       logger.error(`Failed to parse chain data for chain ${chainId}:`, error)
       return null
@@ -124,7 +167,7 @@ export class RedisStorage {
       return { asMap, asSlice }
     }
 
-    for (const [, entry] of Object.entries(chainData)) {
+    for (const entry of Object.values(chainData)) {
       const { timestamp: _timestamp, ...price } = entry
       asMap.set(price.address, price)
       asSlice.push(price)
@@ -136,111 +179,77 @@ export class RedisStorage {
   public async getAllPrices(): Promise<Map<number, Map<string, Price>>> {
     const allPrices = new Map<number, Map<string, Price>>()
 
-    // Get all chain keys at once
+    if (this.circuitOpen) return allPrices
+
     const chainIds = Object.values(SUPPORTED_CHAINS).map((c) => c.id)
-    logger.info(`[RedisStorage] Fetching prices for chains: ${chainIds.join(', ')}`)
 
-    const pipeline = this.redis.pipeline()
-
-    for (const chainId of chainIds) {
-      const key = this.getChainKey(chainId)
-      logger.debug(`[RedisStorage] Adding key to pipeline: ${key}`)
-      pipeline.get(key)
+    let results: unknown[]
+    try {
+      const pipeline = this.redis.pipeline()
+      for (const chainId of chainIds) {
+        pipeline.get(this.getChainKey(chainId))
+      }
+      results = await pipeline.exec()
+      this.handleRedisSuccess()
+    } catch (error) {
+      this.handleRedisError('getAllPrices', error)
+      return allPrices
     }
-
-    const results = await pipeline.exec()
-    logger.info(`[RedisStorage] Pipeline returned ${results.length} results`)
 
     for (let i = 0; i < results.length; i++) {
       const chainId = chainIds[i]
       if (!chainId) continue
+
+      // Upstash pipeline results may be wrapped in { result: ... }
       const result = results[i]
+      const rawData =
+        result != null && typeof result === 'object' && 'result' in result ? result.result : result
 
-      logger.debug(
-        `[RedisStorage] Result for chain ${chainId}:`,
-        JSON.stringify(result).substring(0, 200),
-      )
+      try {
+        const chainData = this.parseChainData(rawData)
+        if (!chainData) continue
 
-      // Handle different response formats from Redis pipeline
-      let rawData = null
-      if (result !== null && result !== undefined) {
-        // Check if result is wrapped in { result: ... } format
-        if (typeof result === 'object' && 'result' in result) {
-          rawData = result.result
-        } else {
-          // Direct result from pipeline
-          rawData = result
+        const chainMap = new Map<string, Price>()
+        for (const entry of Object.values(chainData)) {
+          if (!entry || typeof entry !== 'object') continue
+          const { timestamp: _timestamp, ...price } = entry
+          chainMap.set(price.address, price)
         }
-      }
 
-      if (rawData) {
-        try {
-          let chainData: ChainPriceData
-
-          logger.debug(`[RedisStorage] Raw data type for chain ${chainId}: ${typeof rawData}`)
-          logger.debug(
-            `[RedisStorage] Raw data sample for chain ${chainId}: ${JSON.stringify(rawData).substring(0, 200)}`,
-          )
-
-          // Handle both string and object responses from Redis
-          if (typeof rawData === 'string') {
-            chainData = JSON.parse(rawData) as ChainPriceData
-          } else {
-            chainData = rawData as ChainPriceData
-          }
-
-          const chainMap = new Map<string, Price>()
-
-          logger.debug(
-            `[RedisStorage] Chain data keys for chain ${chainId}: ${Object.keys(chainData).slice(0, 5).join(', ')}...`,
-          )
-
-          for (const [, entry] of Object.entries(chainData)) {
-            if (!entry || typeof entry !== 'object') {
-              logger.warn(`[RedisStorage] Invalid entry in chain ${chainId}:`, entry)
-              continue
-            }
-
-            if (typeof entry.price === 'string') {
-              entry.price = BigInt(entry.price)
-            }
-            const { timestamp: _timestamp, ...price } = entry
-            chainMap.set(price.address, price)
-          }
-
-          if (chainMap.size > 0) {
-            logger.info(`[RedisStorage] Found ${chainMap.size} prices for chain ${chainId}`)
-            allPrices.set(chainId, chainMap)
-          } else {
-            logger.warn(`[RedisStorage] No prices found for chain ${chainId}`)
-          }
-        } catch (error) {
-          logger.error(`[RedisStorage] Failed to parse chain data for chain ${chainId}:`, error)
+        if (chainMap.size > 0) {
+          allPrices.set(chainId, chainMap)
         }
-      } else {
-        logger.debug(`[RedisStorage] No data found for chain ${chainId}`)
+      } catch (error) {
+        logger.error(`Failed to parse chain data for chain ${chainId}:`, error)
       }
     }
 
-    logger.info(`[RedisStorage] Final result: ${allPrices.size} chains with prices`)
+    logger.info(`Redis getAllPrices: ${allPrices.size} chains loaded`)
     return allPrices
   }
 
   public async clearCache(chainId?: number): Promise<void> {
-    if (chainId) {
-      await this.redis.del(this.getChainKey(chainId))
-      logger.info(`Cleared prices for chain ${chainId}`)
-    } else {
-      // Clear all chains
-      const chainIds = Object.values(SUPPORTED_CHAINS).map((c) => c.id)
-      const pipeline = this.redis.pipeline()
+    if (this.circuitOpen) return
 
-      for (const id of chainIds) {
-        pipeline.del(this.getChainKey(id))
+    try {
+      if (chainId) {
+        await this.redis.del(this.getChainKey(chainId))
+        logger.info(`Cleared prices for chain ${chainId}`)
+      } else {
+        // Clear all chains
+        const chainIds = Object.values(SUPPORTED_CHAINS).map((c) => c.id)
+        const pipeline = this.redis.pipeline()
+
+        for (const id of chainIds) {
+          pipeline.del(this.getChainKey(id))
+        }
+
+        await pipeline.exec()
+        logger.info(`Cleared prices for all chains`)
       }
-
-      await pipeline.exec()
-      logger.info(`Cleared prices for all chains`)
+      this.handleRedisSuccess()
+    } catch (error) {
+      this.handleRedisError('clearCache', error)
     }
   }
 
@@ -306,15 +315,23 @@ export class RedisStorage {
         }
 
         // Store entire chain data at once
+        if (this.circuitOpen) break
+
         const key = this.getChainKey(chain.id)
         const dataStr = JSON.stringify(chainData, (_, v) =>
           typeof v === 'bigint' ? v.toString() : v,
         )
 
-        if (this.cacheTTL > 0) {
-          await this.redis.setex(key, this.cacheTTL, dataStr)
-        } else {
-          await this.redis.set(key, dataStr)
+        try {
+          if (this.cacheTTL > 0) {
+            await this.redis.setex(key, this.cacheTTL, dataStr)
+          } else {
+            await this.redis.set(key, dataStr)
+          }
+          this.handleRedisSuccess()
+        } catch (redisError) {
+          this.handleRedisError(`loadFromFileBackup(chain=${chain.id})`, redisError)
+          continue
         }
 
         const priceCount = Object.keys(chainData).length

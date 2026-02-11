@@ -135,30 +135,3 @@ export function getPublicClient(chainId: number, context?: string): PublicClient
 export function clearClients(): void {
   clients.clear()
 }
-
-/**
- * Helper to batch multiple contract reads using multicall
- * This is a convenience wrapper around publicClient.multicall
- */
-export async function batchReadContracts<T = any>(
-  chainId: number,
-  contracts: Array<{
-    address: `0x${string}`
-    abi: any
-    functionName: string
-    args?: any[]
-  }>,
-): Promise<Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>> {
-  const client = getPublicClient(chainId)
-
-  // Use multicall with allowFailure to handle tokens that might not have certain methods
-  const results = await client.multicall({
-    contracts: contracts.map((c) => ({
-      ...c,
-      args: c.args || [],
-    })),
-    allowFailure: true,
-  })
-
-  return results as Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>
-}

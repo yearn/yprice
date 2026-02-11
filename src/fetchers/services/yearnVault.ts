@@ -1,5 +1,6 @@
 import { ERC20Token, Price } from 'models/index'
-import { batchReadContracts, discoveryPriceCache, logger } from 'utils/index'
+import { batchReadContracts, logger } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 import { type Address, parseAbi } from 'viem'
 
 // Yearn Vault V2 ABI
@@ -65,16 +66,16 @@ export class YearnVaultFetcher {
       const unknownVaultsNeedingFetch: ERC20Token[] = []
 
       yearnVaults.forEach((vault) => {
-        const cached = discoveryPriceCache.get(chainId, vault.address)
-        if (cached?.data?.pricePerShare && cached?.data?.underlyingAddress) {
+        const cached = priceCache.getDiscovered(chainId, vault.address)
+        if (cached?.metadata?.pricePerShare && cached?.metadata?.underlyingAddress) {
           vaultsWithData.push({
             vault,
-            underlying: cached.data.underlyingAddress,
-            pricePerShare: cached.data.pricePerShare,
+            underlying: cached.metadata?.underlyingAddress,
+            pricePerShare: cached.metadata?.pricePerShare,
           })
         } else {
           // Use cached vault version to determine which method to use
-          const vaultVersion = cached?.data?.vaultVersion
+          const vaultVersion = cached?.metadata?.vaultVersion
           if (vaultVersion === 'v2') {
             v2VaultsNeedingFetch.push(vault)
           } else if (vaultVersion === 'v3') {
@@ -227,9 +228,9 @@ export class YearnVaultFetcher {
                 pricePerShare: v2PriceResult.result as bigint,
               })
               // Cache the discovered version
-              const cached = discoveryPriceCache.get(chainId, vault.address)
-              discoveryPriceCache.set(chainId, vault.address, undefined, 'yearn-vault', {
-                ...cached?.data,
+              const cached = priceCache.getDiscovered(chainId, vault.address)
+              priceCache.setDiscovered(chainId, vault.address, undefined, 'yearn-vault', {
+                ...cached?.metadata,
                 vaultVersion: 'v2',
               })
             } else if (
@@ -244,9 +245,9 @@ export class YearnVaultFetcher {
                 pricePerShare: v3ConvertResult.result as bigint,
               })
               // Cache the discovered version
-              const cached = discoveryPriceCache.get(chainId, vault.address)
-              discoveryPriceCache.set(chainId, vault.address, undefined, 'yearn-vault', {
-                ...cached?.data,
+              const cached = priceCache.getDiscovered(chainId, vault.address)
+              priceCache.setDiscovered(chainId, vault.address, undefined, 'yearn-vault', {
+                ...cached?.metadata,
                 vaultVersion: 'v3',
               })
             }
@@ -276,12 +277,12 @@ export class YearnVaultFetcher {
 
           // If not found in token map, try cached data
           if (!pricePerShareDecimals) {
-            const cached = discoveryPriceCache.get(chainId, vault.address)
-            if (cached?.data?.underlyingDecimals) {
-              pricePerShareDecimals = cached.data.underlyingDecimals
-            } else if (cached?.data?.decimals && vault.decimals === cached.data.decimals) {
+            const cached = priceCache.getDiscovered(chainId, vault.address)
+            if (cached?.metadata?.underlyingDecimals) {
+              pricePerShareDecimals = cached.metadata?.underlyingDecimals
+            } else if (cached?.metadata?.decimals && vault.decimals === cached.metadata?.decimals) {
               // If vault decimals match cached decimals, use those
-              pricePerShareDecimals = cached.data.decimals
+              pricePerShareDecimals = cached.metadata?.decimals
             }
           }
 

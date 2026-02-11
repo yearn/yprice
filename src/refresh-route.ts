@@ -1,12 +1,13 @@
 import { writeFileSync } from 'node:fs'
+import { bootstrap, setupSignalHandlers } from 'bootstrap'
 import { chainDiscoveryServices, chainFetchers } from 'discovery/config'
-import dotenv from 'dotenv'
 import { SUPPORTED_CHAINS } from 'models/types'
 import priceService from 'services/priceService'
-import { getStorage, initializeStorage, StorageType, StorageWrapper } from 'storage/index'
+import { getStorage } from 'storage/index'
 import { logger } from 'utils/index'
 
-dotenv.config()
+const { storageType } = bootstrap()
+setupSignalHandlers()
 
 async function refreshRoute() {
   try {
@@ -57,14 +58,7 @@ async function refreshRoute() {
       process.exit(1)
     }
 
-    // Initialize storage with same settings as main server
-    const cacheTTL = parseInt(process.env.CACHE_TTL_SECONDS || '0', 10)
-    const storageType = (process.env.STORAGE_TYPE || 'file') as StorageType
-    const backupDir = './data/prices'
-
-    initializeStorage(storageType, cacheTTL, backupDir)
-
-    logger.info(`🚀 Starting refresh for chain ${chainId} with route '${route}'...`)
+    logger.info(`Starting refresh for chain ${chainId} with route '${route}'...`)
 
     // Call the appropriate service method based on route type
     if (isDiscoveryService) {
@@ -75,13 +69,11 @@ async function refreshRoute() {
       await priceService.fetchPricesForChainAndFetcher(chainId, route)
     }
 
-    logger.info(
-      `💾 Prices have been saved to ${storageType === 'redis' ? 'Redis' : 'data/prices/'}`,
-    )
+    logger.info(`Prices have been saved to ${storageType === 'redis' ? 'Redis' : 'data/prices/'}`)
 
     // Export results if requested
     if (exportFlag || csvFlag) {
-      const storage = new StorageWrapper(getStorage())
+      const storage = getStorage()
       const { asSlice } = await storage.listPrices(chainId)
 
       if (asSlice.length === 0) {
@@ -114,7 +106,7 @@ async function refreshRoute() {
 
           const csvFilename = `${baseFilename}.csv`
           writeFileSync(csvFilename, csvContent)
-          logger.info(`📄 Results exported to ${csvFilename}`)
+          logger.info(`Results exported to ${csvFilename}`)
         } else {
           // Export as JSON
           const jsonData = {
@@ -134,7 +126,7 @@ async function refreshRoute() {
 
           const jsonFilename = `${baseFilename}.json`
           writeFileSync(jsonFilename, JSON.stringify(jsonData, null, 2))
-          logger.info(`📄 Results exported to ${jsonFilename}`)
+          logger.info(`Results exported to ${jsonFilename}`)
         }
       }
     }
@@ -146,16 +138,4 @@ async function refreshRoute() {
   }
 }
 
-// Handle termination
-process.on('SIGINT', () => {
-  logger.info('Price refresh interrupted by user')
-  process.exit(1)
-})
-
-process.on('SIGTERM', () => {
-  logger.info('Price refresh terminated')
-  process.exit(1)
-})
-
-// Run the refresh
 refreshRoute()

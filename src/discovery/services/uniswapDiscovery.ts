@@ -1,6 +1,11 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
+import {
+  batchReadContracts,
+  deduplicateTokens,
+  fetchJson,
+  getPublicClient,
+  logger,
+} from 'utils/index'
 import { type Address, parseAbi } from 'viem'
 
 // Uniswap V2 Factory addresses
@@ -203,9 +208,9 @@ export class UniswapDiscovery implements Discovery {
     const tokenListUrl = UNISWAP_TOKEN_LISTS[this.chainId]
     if (tokenListUrl) {
       try {
-        const response = await axios.get(tokenListUrl, { timeout: 10000 })
-        if (response.data?.tokens) {
-          for (const token of response.data.tokens) {
+        const data = await fetchJson<any>(tokenListUrl, { timeout: 10000 })
+        if (data?.tokens) {
+          for (const token of data.tokens) {
             if (token.chainId === this.chainId && token.address) {
               tokens.push({
                 address: token.address.toLowerCase(),

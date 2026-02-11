@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { ERC20Token, Price } from 'models/index'
-import { discoveryPriceCache, logger } from 'utils/index'
+import { fetchJson, logger } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 
 interface PendleMarket {
   address: string
@@ -68,7 +68,7 @@ export class PendleFetcher {
     // First check cache for prices
     const { cached, uncached } = tokens.reduce(
       (acc, token) => {
-        const cachedPrice = discoveryPriceCache.get(chainId, token.address)
+        const cachedPrice = priceCache.getDiscovered(chainId, token.address)
         if (cachedPrice?.price) {
           priceMap.set(token.address.toLowerCase(), {
             address: token.address.toLowerCase(),
@@ -144,18 +144,14 @@ export class PendleFetcher {
           const currentSkip = skip + i * limit
           const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${currentSkip}&limit=${limit}`
           tasks.push(
-            axios
-              .get<PendleMarketsResponse>(paginatedUrl, {
-                timeout: 30000,
-                headers: {
-                  'User-Agent': 'yearn-pricing-service',
-                  Accept: 'application/json',
-                },
-              })
-              .then((response) => {
-                if (response.data?.results && response.data.results.length > 0) {
-                  allMarkets.push(...response.data.results)
-                  if (response.data.results.length < limit) {
+            fetchJson<PendleMarketsResponse>(paginatedUrl, {
+              headers: { Accept: 'application/json' },
+              retries: 1,
+            })
+              .then((data) => {
+                if (data?.results && data.results.length > 0) {
+                  allMarkets.push(...data.results)
+                  if (data.results.length < limit) {
                     done = true
                   }
                 } else {
@@ -241,19 +237,15 @@ export class PendleFetcher {
     priceMap: Map<string, Price>,
   ): Promise<void> {
     try {
-      const response = await axios.get<PendleAssetsResponse>(url, {
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'yearn-pricing-service',
-          Accept: 'application/json',
-        },
+      const data = await fetchJson<PendleAssetsResponse>(url, {
+        headers: { Accept: 'application/json' },
       })
 
-      if (!response.data?.results) {
+      if (!data?.results) {
         return
       }
 
-      for (const asset of response.data.results) {
+      for (const asset of data.results) {
         const assetAddress = asset.address.toLowerCase()
         if (tokenAddresses.has(assetAddress) && asset.price?.usd && !priceMap.has(assetAddress)) {
           const price = BigInt(Math.floor(asset.price.usd * 1e6))

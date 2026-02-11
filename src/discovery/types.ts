@@ -86,4 +86,5 @@ export interface DiscoveryConfig {
   veloApiUrl?: string
   supportedServices?: DiscoverySource[]
   supportedPriceFetchers?: PriceFetcher[]
+  skipAddresses?: string[]
 }

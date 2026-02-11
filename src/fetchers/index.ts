@@ -20,7 +20,6 @@ import { YearnVaultFetcher } from 'fetchers/services/yearnVault'
 import { ERC20Token, Price } from 'models/index'
 import { logger } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
-import { progressTracker } from 'utils/progressTracker'
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher()
@@ -39,9 +38,6 @@ export class PriceFetcherOrchestrator {
     existingPrices?: Map<string, Price>,
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>()
-    const progressKey = `fetch-${chainId}-${Date.now()}`
-
-    progressTracker.start(progressKey, 'Price Fetching', tokens.length, chainId)
 
     // Get supported price fetchers for this chain
     const config = DISCOVERY_CONFIGS[chainId]
@@ -78,16 +74,9 @@ export class PriceFetcherOrchestrator {
       priceMap.set(address, price)
     })
 
-    progressTracker.update(
-      progressKey,
-      priceMap.size,
-      `${cachedPrices.size} from cache${existingPrices ? ` + ${existingPrices.size} existing` : ''}`,
-    )
-
     let missingTokens = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
 
     if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey)
       return priceMap
     }
 
@@ -110,16 +99,11 @@ export class PriceFetcherOrchestrator {
       )
     }
 
-    // Run all independent fetchers in parallel
-    progressTracker.update(progressKey, priceMap.size, 'Fetching prices from all sources...')
-
     // Known incorrect prices to skip from DeFiLlama
-    const skipDefillamaAddresses = new Set(
-      [
-        chainId === 1 ? '0x27b5739e22ad9033bcbf192059122d163b60349d' : '', // st-yCRV
-        chainId === 1 ? '0x69833361991ed76f9e8dbbcdf9ea1520febfb4a7' : '', // st-ETH
-      ].filter(Boolean),
-    )
+    const skipDefillamaAddresses = new Set(config?.skipAddresses || [])
+
+    // Track which fetchers already ran in the independent phase
+    const ranIndependentFetchers = new Set<string>()
 
     // All price fetchers that don't depend on other prices
     const independentFetchers = []
@@ -186,33 +170,21 @@ export class PriceFetcherOrchestrator {
       independentFetchers.push(
         this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError),
       )
+      ranIndependentFetchers.add('velodrome')
     }
 
     // Run all independent fetchers concurrently
     const results = await Promise.allSettled(independentFetchers)
 
     // Process results and update price map
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        result.value.forEach((price: Price, address: string) => {
-          if (price.price > BigInt(0) && !priceMap.has(address)) {
-            priceMap.set(address, price)
-            priceCache.set(chainId, address, price, symbolMap.get(address))
-          }
-        })
-      }
-    })
-
-    progressTracker.update(progressKey, priceMap.size, 'Independent fetchers complete')
+    this.mergeFetcherResults(results, priceMap, chainId, symbolMap)
 
     missingTokens = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
     if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey)
       return priceMap
     }
 
     // Dependent fetchers (need existing prices)
-    progressTracker.update(progressKey, priceMap.size, 'Running dependent fetchers...')
 
     const dependentFetchers = []
 
@@ -240,7 +212,7 @@ export class PriceFetcherOrchestrator {
     if (
       shouldRunFetcher('velodrome') &&
       priceMap.size > 0 &&
-      !independentFetchers.some((f) => f.toString().includes('velodrome'))
+      !ranIndependentFetchers.has('velodrome')
     ) {
       dependentFetchers.push(
         this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
@@ -250,7 +222,23 @@ export class PriceFetcherOrchestrator {
     const dependentResults = await Promise.allSettled(dependentFetchers)
 
     // Process dependent results
-    dependentResults.forEach((result) => {
+    this.mergeFetcherResults(dependentResults, priceMap, chainId, symbolMap)
+
+    const finalMissing = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
+    if (finalMissing.length > 0) {
+      logger.debug(`Missing prices for ${finalMissing.length} tokens on chain ${chainId}`)
+    }
+
+    return priceMap
+  }
+
+  private mergeFetcherResults(
+    results: PromiseSettledResult<Map<string, Price>>[],
+    priceMap: Map<string, Price>,
+    chainId: number,
+    symbolMap: Map<string, string>,
+  ): void {
+    for (const result of results) {
       if (result.status === 'fulfilled') {
         result.value.forEach((price: Price, address: string) => {
           if (price.price > BigInt(0) && !priceMap.has(address)) {
@@ -259,16 +247,7 @@ export class PriceFetcherOrchestrator {
           }
         })
       }
-    })
-
-    progressTracker.complete(progressKey)
-
-    const finalMissing = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
-    if (finalMissing.length > 0) {
-      logger.debug(`Missing prices for ${finalMissing.length} tokens on chain ${chainId}`)
     }
-
-    return priceMap
   }
 
   /**

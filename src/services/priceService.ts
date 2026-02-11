@@ -1,8 +1,8 @@
 import tokenDiscoveryService from 'discovery/tokenDiscoveryService'
 import { PriceFetcherOrchestrator } from 'fetchers/index'
 import { ERC20Token, Price, WETH_ADDRESSES } from 'models/index'
-import { getStorage, StorageWrapper } from 'storage/index'
-import { betterLogger, chunk, logger } from 'utils/index'
+import { getStorage } from 'storage/index'
+import { chainComplete, chunk, logger, setBatchMode, summary, verbose } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 export class PriceService {
@@ -55,7 +55,7 @@ export class PriceService {
       }
 
       const prices = await this.fetcher.fetchPrices(chainId, tokensWithNative, existingPrices)
-      const storage = new StorageWrapper(getStorage())
+      const storage = getStorage()
 
       if (wethAddress) {
         const wethPrice = prices.get(wethAddress)
@@ -96,7 +96,7 @@ export class PriceService {
       logger.info('')
 
       // Enable batch mode to suppress verbose logs
-      betterLogger.setBatchMode(true)
+      setBatchMode(true)
 
       // Track overall stats
       let totalPricesFound = 0
@@ -145,7 +145,7 @@ export class PriceService {
 
           // Process base token batches
           if (baseBatches.length > 0) {
-            betterLogger.verbose(`Processing ${baseBatches.length} base token batches...`)
+            verbose(`Processing ${baseBatches.length} base token batches...`)
 
             await this.processBatchesConcurrently(
               baseBatches,
@@ -160,7 +160,7 @@ export class PriceService {
                   return { success: true }
                 } catch (error) {
                   errors++
-                  betterLogger.verbose(`Error in base batch for chain ${chainId}: ${error}`)
+                  verbose(`Error in base batch for chain ${chainId}: ${error}`)
                   return { success: false, error }
                 }
               },
@@ -171,7 +171,7 @@ export class PriceService {
           const derivativeBatches = chunk(derivativeTokens, batchSize)
 
           if (derivativeBatches.length > 0) {
-            betterLogger.verbose(
+            verbose(
               `Processing ${derivativeBatches.length} derivative token batches with ${accumulatedPrices.size} base prices...`,
             )
 
@@ -185,7 +185,7 @@ export class PriceService {
                   return { success: true }
                 } catch (error) {
                   errors++
-                  betterLogger.verbose(`Error in derivative batch for chain ${chainId}: ${error}`)
+                  verbose(`Error in derivative batch for chain ${chainId}: ${error}`)
                   return { success: false, error }
                 }
               },
@@ -193,19 +193,24 @@ export class PriceService {
           }
 
           // Get final price count after all batches complete
-          const storage = new StorageWrapper(getStorage())
-          const { asSlice } = await storage.listPrices(chainId)
-          const pricesFound = asSlice.length
+          let pricesFound = 0
+          try {
+            const storage = getStorage()
+            const { asSlice } = await storage.listPrices(chainId)
+            pricesFound = asSlice.length
+          } catch {
+            pricesFound = accumulatedPrices.size
+          }
 
           const chainDuration = Date.now() - chainStartTime
-          betterLogger.chainComplete(chainId, tokens.length, pricesFound, chainDuration)
+          chainComplete(chainId, tokens.length, pricesFound, chainDuration)
 
           return { chainId, tokens: tokens.length, prices: pricesFound, errors }
         }),
       )
 
       // Disable batch mode
-      betterLogger.setBatchMode(false)
+      setBatchMode(false)
 
       // Calculate totals
       chainResults.forEach((result) => {
@@ -214,7 +219,7 @@ export class PriceService {
       })
 
       // Show summary
-      betterLogger.summary({
+      summary({
         totalChains,
         totalTokens,
         totalPrices: totalPricesFound,
@@ -222,7 +227,7 @@ export class PriceService {
         errors: totalErrors,
       })
     } catch (error) {
-      betterLogger.setBatchMode(false)
+      setBatchMode(false)
       logger.error('Error fetching discovered tokens:', error)
     }
   }
@@ -346,7 +351,7 @@ export class PriceService {
 
       // Fetch prices using only the specified fetcher
       const prices = await customFetcher.fetchPrices(chainId, tokens)
-      const storage = new StorageWrapper(getStorage())
+      const storage = getStorage()
 
       // Handle WETH/ETH price mapping
       const wethAddress = WETH_ADDRESSES[chainId]

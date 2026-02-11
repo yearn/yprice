@@ -32,6 +32,10 @@ export const DISCOVERY_CONFIGS: Record<number, DiscoveryConfig> = {
       'yearn-vault',
       // 'curve-factories',
     ],
+    skipAddresses: [
+      '0x27b5739e22ad9033bcbf192059122d163b60349d', // st-yCRV
+      '0x69833361991ed76f9e8dbbcdf9ea1520febfb4a7', // st-ETH
+    ],
     baseTokens: [
       '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
       '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC

@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { createHttpsAgent, deduplicateTokens, discoveryPriceCache, logger } from 'utils/index'
+import { deduplicateTokens, fetchJson, logger } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 import { zeroAddress } from 'viem'
 
 interface GammaHypervisor {
@@ -34,16 +34,10 @@ export class GammaDiscovery implements Discovery {
     const apiUrl = GAMMA_API_URL
 
     try {
-      const httpsAgent = createHttpsAgent()
+      const data = await fetchJson<GammaResponse>(apiUrl)
 
-      const response = await axios.get<GammaResponse>(apiUrl, {
-        timeout: 30000,
-        headers: { 'User-Agent': 'yearn-pricing-service' },
-        httpsAgent: httpsAgent,
-      })
-
-      if (response.data) {
-        for (const [address, hypervisor] of Object.entries(response.data)) {
+      if (data) {
+        for (const [address, hypervisor] of Object.entries(data)) {
           // Add hypervisor LP token
           tokens.push({
             address: address.toLowerCase(),
@@ -60,7 +54,7 @@ export class GammaDiscovery implements Discovery {
             const price = BigInt(Math.floor(pricePerToken * 1e6))
 
             if (price > BigInt(0)) {
-              discoveryPriceCache.set(this.chainId, address, price, 'gamma', {
+              priceCache.setDiscovered(this.chainId, address, price, 'gamma', {
                 tvlUSD: hypervisor.tvlUSD,
                 totalSupply: hypervisor.totalSupply,
               })

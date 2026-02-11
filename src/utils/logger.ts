@@ -104,15 +104,4 @@ export const summary = (stats: {
   logger.info('')
 }
 
-// Unified logger interface (replaces betterLogger)
-export const betterLogger = {
-  verbose,
-  info: (message: string, ...args: any[]) => logger.info(message, ...args),
-  warn: (message: string, ...args: any[]) => logger.warn(message, ...args),
-  error: (message: string, ...args: any[]) => logger.error(message, ...args),
-  chainComplete,
-  summary,
-  setBatchMode,
-}
-
 export default logger

@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { ERC20Token, Price } from 'models/index'
-import { discoveryPriceCache, logger } from 'utils/index'
+import { fetchJson, logger } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 
 interface GammaHypervisor {
   id: string
@@ -33,7 +33,7 @@ export class GammaFetcher {
     // First check cache for prices
     const { cached, uncached } = tokens.reduce(
       (acc, token) => {
-        const cachedPrice = discoveryPriceCache.get(chainId, token.address)
+        const cachedPrice = priceCache.getDiscovered(chainId, token.address)
         if (cachedPrice?.price) {
           priceMap.set(token.address.toLowerCase(), {
             address: token.address.toLowerCase(),
@@ -61,12 +61,9 @@ export class GammaFetcher {
     try {
       logger.debug(`Gamma: Fetching LP prices for chain ${chainId}`)
 
-      const response = await axios.get<GammaResponse>(this.apiUrl, {
-        timeout: 30000,
-        headers: { 'User-Agent': 'yearn-pricing-service' },
-      })
+      const data = await fetchJson<GammaResponse>(this.apiUrl)
 
-      if (!response.data) {
+      if (!data) {
         logger.warn(`Gamma API returned no data`)
         return priceMap
       }
@@ -74,7 +71,7 @@ export class GammaFetcher {
       const tokenAddresses = new Set(uncached.map((t) => t.address.toLowerCase()))
 
       // Process hypervisor data
-      Object.entries(response.data).forEach(([address, hypervisor]) => {
+      Object.entries(data).forEach(([address, hypervisor]) => {
         const lpAddress = address.toLowerCase()
 
         if (tokenAddresses.has(lpAddress)) {

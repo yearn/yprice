@@ -5,6 +5,14 @@ interface CachedPrice {
   price: Price
   timestamp: number
   ttl: number
+  metadata?: Record<string, any>
+}
+
+export interface DiscoveredPrice {
+  address: string
+  price?: bigint
+  source: string
+  metadata?: Record<string, any>
 }
 
 interface TokenType {
@@ -16,6 +24,7 @@ interface TokenType {
 
 export class PriceCache {
   private cache: Map<string, CachedPrice> = new Map()
+  private discoveryCache: Map<string, DiscoveredPrice> = new Map()
 
   private readonly TTL_STABLECOIN = 5 * 60 * 1000
   private readonly TTL_MAJOR = 60 * 1000
@@ -91,6 +100,27 @@ export class PriceCache {
       timestamp: Date.now(),
       ttl,
     })
+  }
+
+  setDiscovered(
+    chainId: number,
+    address: string,
+    price: bigint | undefined,
+    source: string,
+    metadata?: Record<string, any>,
+  ): void {
+    const key = `disc:${chainId}:${address.toLowerCase()}`
+    this.discoveryCache.set(key, {
+      address: address.toLowerCase(),
+      price,
+      source,
+      metadata,
+    })
+  }
+
+  getDiscovered(chainId: number, address: string): DiscoveredPrice | null {
+    const key = `disc:${chainId}:${address.toLowerCase()}`
+    return this.discoveryCache.get(key) ?? null
   }
 
   setMany(chainId: number, prices: Map<string, Price>, symbols?: Map<string, string>): void {

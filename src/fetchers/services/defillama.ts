@@ -1,7 +1,6 @@
-import axios from 'axios'
 import { ERC20Token, LlamaPrice, Price, PriceSource } from 'models/index'
 import pLimit from 'p-limit'
-import { addressEquals, chunk, logger, parseUnits } from 'utils/index'
+import { addressEquals, chunk, fetchJson, logger, parseUnits } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
 
 const LLAMA_CHAIN_NAMES: Record<number, string> = {
@@ -141,14 +140,11 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
         )
       }
 
-      const response = await axios.get<LlamaPrice>(url, {
-        timeout: 10000,
-        headers: { 'User-Agent': 'yearn-pricing-service' },
-      })
+      const data = await fetchJson<LlamaPrice>(url, { timeout: 10000, retries: 0 })
 
-      if (response.data?.coins) {
+      if (data?.coins) {
         if (chainId === 1) {
-          const receivedAddresses = Object.keys(response.data.coins).map((k) =>
+          const receivedAddresses = Object.keys(data.coins).map((k) =>
             k.split(':')[1]?.toLowerCase(),
           )
           const majorMissing = majorTokens.filter(
@@ -162,14 +158,14 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
           }
         }
 
-        for (const [key, data] of Object.entries(response.data.coins)) {
+        for (const [key, coinData] of Object.entries(data.coins)) {
           const address = key.split(':')[1]
-          if (address && data.price > 0) {
+          if (address && coinData.price > 0) {
             const token = tokens.find((t) => addressEquals(t.address, address))
             if (token) {
               prices.set(token.address.toLowerCase(), {
                 address: token.address,
-                price: parseUnits(data.price.toString(), 6),
+                price: parseUnits(coinData.price.toString(), 6),
                 source: PriceSource.DEFILLAMA,
               })
             }
@@ -281,16 +277,13 @@ export class DefilllamaFetcher implements DefiLlamaFetcher {
     this.limit(async () => {
       try {
         const url = `${this.baseUrl}/prices/current/ethereum:${mainnetAjnaAddress}`
-        const response = await axios.get<LlamaPrice>(url, {
-          timeout: 10000,
-          headers: { 'User-Agent': 'yearn-pricing-service' },
-        })
+        const ajnaData = await fetchJson<LlamaPrice>(url, { timeout: 10000, retries: 0 })
 
-        const data = response.data?.coins[`ethereum:${mainnetAjnaAddress}`]
-        if (data && data.price > 0) {
+        const ajnaCoin = ajnaData?.coins[`ethereum:${mainnetAjnaAddress}`]
+        if (ajnaCoin && ajnaCoin.price > 0) {
           prices.set(ajnaToken.address.toLowerCase(), {
             address: ajnaToken.address,
-            price: parseUnits(data.price.toString(), 6),
+            price: parseUnits(ajnaCoin.price.toString(), 6),
             source: PriceSource.DEFILLAMA,
           })
         }

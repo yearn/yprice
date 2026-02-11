@@ -1,9 +1,8 @@
-import axios from 'axios'
 import { CurvePoolData, Discovery, TokenInfo } from 'discovery/types'
 import {
   batchReadContracts,
-  createHttpsAgent,
   deduplicateTokens,
+  fetchJson,
   getPublicClient,
   logger,
 } from 'utils/index'
@@ -177,18 +176,12 @@ export class CurveDiscovery implements Discovery {
     const tokens: TokenInfo[] = []
 
     try {
-      const httpsAgent = createHttpsAgent()
-      const response = await axios.get<{ success: boolean; data: { poolData: CurvePoolData[] } }>(
+      const data = await fetchJson<{ success: boolean; data: { poolData: CurvePoolData[] } }>(
         this.apiUrl!,
-        {
-          timeout: 30000,
-          headers: { 'User-Agent': 'yearn-pricing-service' },
-          httpsAgent,
-        },
       )
 
-      if (response.data?.success && response.data.data?.poolData) {
-        for (const pool of response.data.data.poolData) {
+      if (data?.success && data.data?.poolData) {
+        for (const pool of data.data.poolData) {
           if (pool.lpTokenAddress) {
             tokens.push({
               address: pool.lpTokenAddress.toLowerCase(),

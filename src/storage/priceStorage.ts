@@ -91,11 +91,11 @@ export class PriceStorage {
     }
   }
 
-  public storePrice(chainId: number, price: Price): void {
+  public async storePrice(chainId: number, price: Price): Promise<void> {
     this.storePrices(chainId, [price])
   }
 
-  public storePrices(chainId: number, prices: Price[]): void {
+  public async storePrices(chainId: number, prices: Price[]): Promise<void> {
     const cache = this.caches.get(chainId)
     if (!cache) throw new Error(`Chain ${chainId} not supported`)
 
@@ -111,14 +111,16 @@ export class PriceStorage {
     this.persistToBackup(chainId)
   }
 
-  public getPrice(chainId: number, address: string): Price | undefined {
+  public async getPrice(chainId: number, address: string): Promise<Price | undefined> {
     const entry = this.caches.get(chainId)?.get<PriceCacheEntry>(address.toLowerCase())
     if (!entry) return undefined
     const { timestamp: _timestamp, ...price } = entry
     return price
   }
 
-  public listPrices(chainId: number): { asMap: Map<string, Price>; asSlice: Price[] } {
+  public async listPrices(
+    chainId: number,
+  ): Promise<{ asMap: Map<string, Price>; asSlice: Price[] }> {
     const cache = this.caches.get(chainId)
     if (!cache) return { asMap: new Map(), asSlice: [] }
 
@@ -137,15 +139,15 @@ export class PriceStorage {
     return { asMap, asSlice }
   }
 
-  public getAllPrices(): Map<number, Map<string, Price>> {
+  public async getAllPrices(): Promise<Map<number, Map<string, Price>>> {
     const allPrices = new Map<number, Map<string, Price>>()
 
-    Object.values(SUPPORTED_CHAINS).forEach((chain: ChainConfig) => {
-      const { asMap } = this.listPrices(chain.id)
+    for (const chain of Object.values(SUPPORTED_CHAINS)) {
+      const { asMap } = await this.listPrices(chain.id)
       if (asMap.size > 0) {
         allPrices.set(chain.id, asMap)
       }
-    })
+    }
 
     return allPrices
   }
@@ -178,7 +180,7 @@ export class PriceStorage {
     }
   }
 
-  public clearCache(chainId?: number): void {
+  public async clearCache(chainId?: number): Promise<void> {
     if (chainId) {
       this.caches.get(chainId)?.flushAll()
     } else {
@@ -188,7 +190,7 @@ export class PriceStorage {
     }
   }
 
-  public getStats(chainId?: number): any {
+  public async getStats(chainId?: number): Promise<any> {
     if (chainId) return this.caches.get(chainId)?.getStats()
     return Object.fromEntries(
       Array.from(this.caches.entries()).map(([id, cache]) => [id, cache.getStats()]),

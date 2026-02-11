@@ -1,6 +1,6 @@
 export * from './config'
 export * from './services/curveDiscovery'
+export * from './services/veloDiscovery'
 export * from './tokenDiscoveryService'
 export { default as tokenDiscoveryService } from './tokenDiscoveryService'
 export * from './types'
-export * from './services/veloDiscovery'
