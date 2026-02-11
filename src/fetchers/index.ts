@@ -1,27 +1,25 @@
-export * from './curveAmm'
-export * from './curveFactories'
-export * from './defillama'
-export * from './erc4626'
-export * from './gamma'
-export * from './lensOracle'
-export * from './pendle'
-export * from './velodrome'
-export * from './yearnVault'
+export * from './services/curveAmm'
+export * from './services/curveFactories'
+export * from './services/defillama'
+export * from './services/erc4626'
+export * from './services/gamma'
+export * from './services/pendle'
+export * from './services/velodrome'
+export * from './services/yearnVault'
 
 import { DISCOVERY_CONFIGS } from 'discovery/config'
 import type { PriceFetcher } from 'discovery/types'
-import { CurveAmmFetcher } from 'fetchers/curveAmm'
-import { CurveFactoriesFetcher } from 'fetchers/curveFactories'
-import { DefilllamaFetcher } from 'fetchers/defillama'
-import { ERC4626Fetcher } from 'fetchers/erc4626'
-import { GammaFetcher } from 'fetchers/gamma'
-import { PendleFetcher } from 'fetchers/pendle'
-import { VelodromeFetcher } from 'fetchers/velodrome'
-import { YearnVaultFetcher } from 'fetchers/yearnVault'
+import { CurveAmmFetcher } from 'fetchers/services/curveAmm'
+import { CurveFactoriesFetcher } from 'fetchers/services/curveFactories'
+import { DefilllamaFetcher } from 'fetchers/services/defillama'
+import { ERC4626Fetcher } from 'fetchers/services/erc4626'
+import { GammaFetcher } from 'fetchers/services/gamma'
+import { PendleFetcher } from 'fetchers/services/pendle'
+import { VelodromeFetcher } from 'fetchers/services/velodrome'
+import { YearnVaultFetcher } from 'fetchers/services/yearnVault'
 import { ERC20Token, Price } from 'models/index'
 import { logger } from 'utils/index'
 import { priceCache } from 'utils/priceCache'
-import { progressTracker } from 'utils/progressTracker'
 
 export class PriceFetcherOrchestrator {
   private defillama = new DefilllamaFetcher()
@@ -30,7 +28,6 @@ export class PriceFetcherOrchestrator {
   private gamma = new GammaFetcher()
   private pendle = new PendleFetcher()
   private curveAmm = new CurveAmmFetcher()
-  // private lensOracle = new LensOracleFetcher()
   private erc4626 = new ERC4626Fetcher()
   private yearnVault = new YearnVaultFetcher()
   private fetcherFilter?: string
@@ -41,9 +38,6 @@ export class PriceFetcherOrchestrator {
     existingPrices?: Map<string, Price>,
   ): Promise<Map<string, Price>> {
     const priceMap = new Map<string, Price>()
-    const progressKey = `fetch-${chainId}-${Date.now()}`
-
-    progressTracker.start(progressKey, 'Price Fetching', tokens.length, chainId)
 
     // Get supported price fetchers for this chain
     const config = DISCOVERY_CONFIGS[chainId]
@@ -80,16 +74,9 @@ export class PriceFetcherOrchestrator {
       priceMap.set(address, price)
     })
 
-    progressTracker.update(
-      progressKey,
-      priceMap.size,
-      `${cachedPrices.size} from cache${existingPrices ? ` + ${existingPrices.size} existing` : ''}`,
-    )
-
     let missingTokens = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
 
     if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey)
       return priceMap
     }
 
@@ -98,28 +85,43 @@ export class PriceFetcherOrchestrator {
       return new Map<string, Price>()
     }
 
-    // Run all independent fetchers in parallel
-    progressTracker.update(progressKey, priceMap.size, 'Fetching prices from all sources...')
+    // Smart routing: separate tokens by source hint
+    const tokensBySource = this.routeTokensBySource(missingTokens)
+
+    // Log routing stats for debugging
+    if (tokensBySource.withSource.size > 0) {
+      logger.debug(
+        `Smart routing: ${tokensBySource.noSource.length} tokens without source, ${Array.from(
+          tokensBySource.withSource.entries(),
+        )
+          .map(([src, tkns]) => `${tkns.length} ${src}`)
+          .join(', ')}`,
+      )
+    }
 
     // Known incorrect prices to skip from DeFiLlama
-    const skipDefillamaAddresses = new Set(
-      [
-        chainId === 1 ? '0x27b5739e22ad9033bcbf192059122d163b60349d' : '', // st-yCRV
-        chainId === 1 ? '0x69833361991ed76f9e8dbbcdf9ea1520febfb4a7' : '', // st-ETH
-      ].filter(Boolean),
-    )
+    const skipDefillamaAddresses = new Set(config?.skipAddresses || [])
+
+    // Track which fetchers already ran in the independent phase
+    const ranIndependentFetchers = new Set<string>()
 
     // All price fetchers that don't depend on other prices
     const independentFetchers = []
 
-    // DeFiLlama - primary price source
-    if (shouldRunFetcher('defillama')) {
+    // DeFiLlama - primary price source (skip for tokens with specific sources that don't need it)
+    const shouldSkipDefillama = (token: ERC20Token): boolean => {
+      const vaultSources = ['yearn-vault', 'erc4626', 'vault']
+      return vaultSources.some((vs) => token.source?.includes(vs))
+    }
+    const defillamaTokens = missingTokens.filter((t) => !shouldSkipDefillama(t))
+
+    if (shouldRunFetcher('defillama') && defillamaTokens.length > 0) {
       independentFetchers.push(
         this.defillama
-          .fetchPrices(chainId, missingTokens)
-          .then((results) => {
-            const filtered = new Map()
-            results.forEach((price, address) => {
+          .fetchPrices(chainId, defillamaTokens)
+          .then((results: Map<string, Price>) => {
+            const filtered = new Map<string, Price>()
+            results.forEach((price: Price, address: string) => {
               if (!skipDefillamaAddresses.has(address)) {
                 filtered.set(address, price)
               }
@@ -130,52 +132,59 @@ export class PriceFetcherOrchestrator {
       )
     }
 
-    // Other API-based fetchers
-    if (shouldRunFetcher('curve-factories')) {
+    // Other API-based fetchers - only run if we have tokens that might match
+    const hasCurveTokens = missingTokens.some(
+      (t) =>
+        t.source?.includes('curve') ||
+        t.symbol?.toLowerCase().includes('crv') ||
+        t.name?.toLowerCase().includes('curve'),
+    )
+    if (shouldRunFetcher('curve-factories') && hasCurveTokens) {
       independentFetchers.push(
         this.curveFactories.fetchPrices(chainId, missingTokens).catch(handleError),
       )
     }
 
-    if (shouldRunFetcher('gamma')) {
+    const hasGammaTokens = missingTokens.some(
+      (t) => t.source?.includes('gamma') || t.symbol?.toLowerCase().includes('gamma'),
+    )
+    if (shouldRunFetcher('gamma') && hasGammaTokens) {
       independentFetchers.push(this.gamma.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
-    if (shouldRunFetcher('pendle')) {
+    const hasPendleTokens = missingTokens.some(
+      (t) => t.source?.includes('pendle') || t.symbol?.toLowerCase().includes('pendle'),
+    )
+    if (shouldRunFetcher('pendle') && hasPendleTokens) {
       independentFetchers.push(this.pendle.fetchPrices(chainId, missingTokens).catch(handleError))
     }
 
-    if (shouldRunFetcher('velodrome')) {
+    const hasVeloTokens = missingTokens.some(
+      (t) =>
+        t.source?.includes('velodrome') ||
+        t.source?.includes('aerodrome') ||
+        chainId === 10 ||
+        chainId === 8453,
+    )
+    if (shouldRunFetcher('velodrome') && hasVeloTokens) {
       independentFetchers.push(
         this.velodrome.fetchPrices(chainId, missingTokens, new Map()).catch(handleError),
       )
+      ranIndependentFetchers.add('velodrome')
     }
 
     // Run all independent fetchers concurrently
     const results = await Promise.allSettled(independentFetchers)
 
     // Process results and update price map
-    results.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        result.value.forEach((price, address) => {
-          if (price.price > BigInt(0) && !priceMap.has(address)) {
-            priceMap.set(address, price)
-            priceCache.set(chainId, address, price, symbolMap.get(address))
-          }
-        })
-      }
-    })
-
-    progressTracker.update(progressKey, priceMap.size, 'Independent fetchers complete')
+    this.mergeFetcherResults(results, priceMap, chainId, symbolMap)
 
     missingTokens = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
     if (missingTokens.length === 0) {
-      progressTracker.complete(progressKey)
       return priceMap
     }
 
     // Dependent fetchers (need existing prices)
-    progressTracker.update(progressKey, priceMap.size, 'Running dependent fetchers...')
 
     const dependentFetchers = []
 
@@ -203,7 +212,7 @@ export class PriceFetcherOrchestrator {
     if (
       shouldRunFetcher('velodrome') &&
       priceMap.size > 0 &&
-      !independentFetchers.some((f) => f.toString().includes('velodrome'))
+      !ranIndependentFetchers.has('velodrome')
     ) {
       dependentFetchers.push(
         this.velodrome.fetchPrices(chainId, missingTokens, priceMap).catch(handleError),
@@ -213,18 +222,7 @@ export class PriceFetcherOrchestrator {
     const dependentResults = await Promise.allSettled(dependentFetchers)
 
     // Process dependent results
-    dependentResults.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        result.value.forEach((price, address) => {
-          if (price.price > BigInt(0) && !priceMap.has(address)) {
-            priceMap.set(address, price)
-            priceCache.set(chainId, address, price, symbolMap.get(address))
-          }
-        })
-      }
-    })
-
-    progressTracker.complete(progressKey)
+    this.mergeFetcherResults(dependentResults, priceMap, chainId, symbolMap)
 
     const finalMissing = tokens.filter((t) => !priceMap.has(t.address.toLowerCase()))
     if (finalMissing.length > 0) {
@@ -232,6 +230,48 @@ export class PriceFetcherOrchestrator {
     }
 
     return priceMap
+  }
+
+  private mergeFetcherResults(
+    results: PromiseSettledResult<Map<string, Price>>[],
+    priceMap: Map<string, Price>,
+    chainId: number,
+    symbolMap: Map<string, string>,
+  ): void {
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        result.value.forEach((price: Price, address: string) => {
+          if (price.price > BigInt(0) && !priceMap.has(address)) {
+            priceMap.set(address, price)
+            priceCache.set(chainId, address, price, symbolMap.get(address))
+          }
+        })
+      }
+    }
+  }
+
+  /**
+   * Route tokens by source hint to optimize fetcher selection
+   * Inspired by ypricemagic's early exit pattern
+   */
+  private routeTokensBySource(tokens: ERC20Token[]): {
+    withSource: Map<string, ERC20Token[]>
+    noSource: ERC20Token[]
+  } {
+    const withSource = new Map<string, ERC20Token[]>()
+    const noSource: ERC20Token[] = []
+
+    tokens.forEach((token) => {
+      if (token.source) {
+        const existing = withSource.get(token.source) || []
+        existing.push(token)
+        withSource.set(token.source, existing)
+      } else {
+        noSource.push(token)
+      }
+    })
+
+    return { withSource, noSource }
   }
 
   setFetcherFilter(fetcherName: string): void {

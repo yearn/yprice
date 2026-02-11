@@ -1,6 +1,5 @@
-import axios from 'axios'
 import { ERC20Token } from 'models/index'
-import { logger } from 'utils/index'
+import { fetchJson, logger } from 'utils/index'
 
 interface TokenListToken {
   address: string
@@ -10,7 +9,7 @@ interface TokenListToken {
   chainId?: number
 }
 
-// Token list URLs by chain - Updated with working endpoints
+// Token list URLs by chain
 const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   // Ethereum
   1: [
@@ -41,7 +40,6 @@ const TOKEN_LISTS: Record<number, { name: string; url: string }[]> = {
   ],
   // Fantom
   250: [
-    { name: '1inch', url: 'https://tokens.1inch.io/v1.2/250' },
     { name: 'CoinGecko Fantom', url: 'https://tokens.coingecko.com/fantom/all.json' },
   ],
   // Base
@@ -88,15 +86,10 @@ export class TokenListDiscovery {
 
   private async fetchTokenList(name: string, url: string, chainId: number): Promise<ERC20Token[]> {
     try {
-      const response = await axios.get(url, {
+      const data = await fetchJson<any>(url, {
         timeout: 10000,
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'Mozilla/5.0 (compatible; YearnPricing/1.0)',
-        },
+        headers: { Accept: 'application/json' },
       })
-
-      const data = response.data
       let tokens: TokenListToken[] = []
 
       // Handle different response formats

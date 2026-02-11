@@ -1,6 +1,5 @@
-import axios from 'axios'
 import { Discovery, TokenInfo, VeloPoolData } from 'discovery/types'
-import { createHttpsAgent, deduplicateTokens, getPublicClient, logger } from 'utils/index'
+import { deduplicateTokens, fetchJson, getPublicClient, logger } from 'utils/index'
 import { type Address, zeroAddress } from 'viem'
 
 // Sugar ABI - complex tuple needs to be defined as a proper ABI object for viem
@@ -123,16 +122,10 @@ export class VeloDiscovery implements Discovery {
     const tokens: TokenInfo[] = []
 
     try {
-      const httpsAgent = createHttpsAgent()
+      const data = await fetchJson<{ data: VeloPoolData[] }>(this.apiUrl!)
 
-      const response = await axios.get<{ data: VeloPoolData[] }>(this.apiUrl!, {
-        timeout: 30000,
-        headers: { 'User-Agent': 'yearn-pricing-service' },
-        httpsAgent: httpsAgent,
-      })
-
-      if (response.data?.data) {
-        for (const pool of response.data.data) {
+      if (data?.data) {
+        for (const pool of data.data) {
           // Add LP token
           tokens.push({
             address: pool.address.toLowerCase(),

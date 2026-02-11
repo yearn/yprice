@@ -1,18 +1,6 @@
-import { AAVEDiscovery } from 'discovery/aaveDiscovery'
-import { BalancerDiscovery } from 'discovery/balancerDiscovery'
-import { CompoundDiscovery } from 'discovery/compoundDiscovery'
 import { DISCOVERY_CONFIGS } from 'discovery/config'
-import { CurveDiscovery } from 'discovery/curveDiscovery'
-import { CurveFactoriesDiscovery } from 'discovery/curveFactories'
-import { CurveRegistriesDiscovery } from 'discovery/curveRegistries'
-import { GammaDiscovery } from 'discovery/gammaDiscovery'
-import { GenericVaultDiscovery } from 'discovery/genericVaultDiscovery'
-import { PendleDiscovery } from 'discovery/pendleDiscovery'
-import tokenListDiscovery from 'discovery/tokenListDiscovery'
+import { DISCOVERY_REGISTRY } from 'discovery/registry'
 import { TokenInfo } from 'discovery/types'
-import { UniswapDiscovery } from 'discovery/uniswapDiscovery'
-import { VeloDiscovery } from 'discovery/veloDiscovery'
-import { YearnDiscovery } from 'discovery/yearnDiscovery'
 import { ERC20Token } from 'models/index'
 import { deduplicateTokens, logger } from 'utils/index'
 
@@ -45,7 +33,7 @@ export class TokenDiscoveryService {
           setTimeout(
             () => reject(new Error(`Chain ${chainId} discovery timeout after 180s`)),
             180000,
-          ) // Increased to 3 minutes
+          )
         }),
       ]).catch((error) => {
         logger.error(`Chain ${chainId} discovery failed: ${error.message}`)
@@ -84,9 +72,11 @@ export class TokenDiscoveryService {
     const problematicChains: number[] = []
     for (const [chainId, tokens] of this.discoveredTokens.entries()) {
       const config = DISCOVERY_CONFIGS[chainId]
-      const expectedSources = this.countExpectedSources(chainId, config)
+      const rpcUrl = this.getRpcUrl(chainId)
+      const expectedSources = config
+        ? DISCOVERY_REGISTRY.filter((e) => e.create(chainId, config, rpcUrl) !== null).length
+        : 0
 
-      // If we got less than 20% of expected tokens, it's problematic
       if (tokens.length < 50 && expectedSources > 3) {
         problematicChains.push(chainId)
       }
@@ -152,34 +142,20 @@ export class TokenDiscoveryService {
     const startTime = Date.now()
 
     try {
-      // Get RPC URL from environment
       const rpcUrl = this.getRpcUrl(chainId)
 
-      // Warn if no RPC URL is configured for on-chain discoveries
       if (!rpcUrl) {
-        const needsRpc =
-          config.yearnRegistryAddress ||
-          config.aaveV2LendingPool ||
-          config.aaveV3Pool ||
-          config.compoundComptroller ||
-          config.curveFactoryAddress ||
-          chainId
-
-        if (needsRpc) {
-          logger.debug(
-            `Chain ${chainId}: No RPC URL configured (RPC_URI_FOR_${chainId}). On-chain discoveries will be skipped.`,
-          )
-        }
+        logger.debug(
+          `Chain ${chainId}: No RPC URL configured (RPC_URI_FOR_${chainId}). On-chain discoveries will be skipped.`,
+        )
       }
 
-      // Create timeout wrapper for discovery sources
       const withTimeout = async <T>(
         promise: Promise<T>,
         timeoutMs: number,
         source: string,
       ): Promise<T | null> => {
         try {
-          // Create an AbortController for proper cleanup
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -204,195 +180,25 @@ export class TokenDiscoveryService {
         }
       }
 
-      // Prepare all discovery sources
       const discoveryPromises: Promise<TokenInfo[] | null>[] = []
       const sourceNames: string[] = []
       const supportedServices = config.supportedServices || []
 
-      // If no supported services defined, run all services (backward compatibility)
       const shouldRunService = (service: string): boolean => {
-        // If a service filter is provided, only run that service
-        if (serviceFilter) {
-          return service === serviceFilter
-        }
+        if (serviceFilter) return service === serviceFilter
         if (supportedServices.length === 0) return true
         return supportedServices.includes(service as any)
       }
 
-      // 1. Yearn vaults (on-chain, needs more time)
-      if (shouldRunService('yearn') && (config.yearnRegistryAddress || chainId) && rpcUrl) {
-        sourceNames.push('Yearn')
-        discoveryPromises.push(
-          withTimeout(
-            new YearnDiscovery(chainId, rpcUrl).discoverTokens(),
-            60000, // 60s for Yearn discovery
-            'Yearn',
-          ),
-        )
-      }
+      // Build discovery tasks from registry
+      for (const entry of DISCOVERY_REGISTRY) {
+        if (!shouldRunService(entry.source)) continue
+        const service = entry.create(chainId, config, rpcUrl)
+        if (!service) continue
 
-      // 2. Curve pools from API (API call, medium timeout)
-      if (shouldRunService('curve-api') && (config.curveFactoryAddress || config.curveApiUrl)) {
-        sourceNames.push('Curve API')
+        sourceNames.push(entry.displayName)
         discoveryPromises.push(
-          withTimeout(
-            new CurveDiscovery(
-              chainId,
-              config.curveFactoryAddress,
-              config.curveApiUrl,
-              rpcUrl,
-            ).discoverTokens(),
-            45000, // 45s for API
-            'Curve API',
-          ),
-        )
-      }
-
-      // 3. Curve factory pools (heavy on-chain discovery)
-      if (shouldRunService('curve-factories') && rpcUrl) {
-        sourceNames.push('Curve Factories')
-        discoveryPromises.push(
-          withTimeout(
-            new CurveFactoriesDiscovery(chainId, rpcUrl).discoverTokens(),
-            60000, // 60s for heavy on-chain discovery
-            'Curve Factories',
-          ),
-        )
-      }
-
-      // 3b. Curve Registries (main, crypto, crvUSD)
-      if (shouldRunService('curve-registries') && rpcUrl) {
-        sourceNames.push('Curve Registries')
-        discoveryPromises.push(
-          withTimeout(
-            new CurveRegistriesDiscovery(chainId, rpcUrl).discoverTokens(),
-            90000, // 90s for comprehensive registry discovery
-            'Curve Registries',
-          ),
-        )
-      }
-
-      // 4. Velodrome/Aerodrome pools
-      if (shouldRunService('velodrome') && (config.veloSugarAddress || config.veloApiUrl)) {
-        sourceNames.push('Velodrome/Aerodrome')
-        discoveryPromises.push(
-          withTimeout(
-            new VeloDiscovery(
-              chainId,
-              config.veloSugarAddress,
-              config.veloApiUrl,
-              rpcUrl,
-            ).discoverTokens(),
-            90000, // Increased to 90s for Velo/Aero due to Base performance issues
-            'Velodrome/Aerodrome',
-          ),
-        )
-      }
-
-      // 5. Token lists (API calls, medium timeout)
-      if (shouldRunService('tokenlist')) {
-        sourceNames.push('Token Lists')
-        discoveryPromises.push(
-          withTimeout(
-            tokenListDiscovery.discoverTokens(chainId).then((tokens) =>
-              tokens.map((t: ERC20Token) => ({
-                address: t.address,
-                chainId: t.chainId,
-                source: 'tokenlist',
-              })),
-            ),
-            45000, // 45s for multiple API calls
-            'Token Lists',
-          ),
-        )
-      }
-
-      // 6. Gamma Protocol (API call)
-      if (shouldRunService('gamma')) {
-        sourceNames.push('Gamma')
-        discoveryPromises.push(
-          withTimeout(
-            new GammaDiscovery(chainId).discoverTokens(),
-            45000, // 45s for API
-            'Gamma',
-          ),
-        )
-      }
-
-      // 7. Pendle (API call)
-      if (shouldRunService('pendle')) {
-        sourceNames.push('Pendle')
-        discoveryPromises.push(
-          withTimeout(
-            new PendleDiscovery(chainId).discoverTokens(),
-            45000, // 45s for API
-            'Pendle',
-          ),
-        )
-      }
-
-      // 8. AAVE (on-chain discovery)
-      if (shouldRunService('aave') && (config.aaveV2LendingPool || config.aaveV3Pool) && rpcUrl) {
-        sourceNames.push('AAVE')
-        discoveryPromises.push(
-          withTimeout(
-            new AAVEDiscovery(
-              chainId,
-              config.aaveV2LendingPool,
-              config.aaveV3Pool,
-              rpcUrl,
-            ).discoverTokens(),
-            60000, // 60s for on-chain
-            'AAVE',
-          ),
-        )
-      }
-
-      // 9. Compound (on-chain discovery)
-      if (shouldRunService('compound') && config.compoundComptroller && rpcUrl) {
-        sourceNames.push('Compound')
-        discoveryPromises.push(
-          withTimeout(
-            new CompoundDiscovery(chainId, config.compoundComptroller, rpcUrl).discoverTokens(),
-            60000, // 60s for on-chain
-            'Compound',
-          ),
-        )
-      }
-
-      // 10. Uniswap (heavy on-chain discovery)
-      if (shouldRunService('uniswap') && rpcUrl) {
-        sourceNames.push('Uniswap')
-        discoveryPromises.push(
-          withTimeout(
-            new UniswapDiscovery(chainId).discoverTokens(),
-            60000, // 60s for on-chain
-            'Uniswap',
-          ),
-        )
-      }
-
-      // 11. Balancer (API call)
-      if (shouldRunService('balancer')) {
-        sourceNames.push('Balancer')
-        discoveryPromises.push(
-          withTimeout(
-            new BalancerDiscovery(chainId).discoverTokens(),
-            45000, // 45s for API
-            'Balancer',
-          ),
-        )
-      }
-
-      // 12. Generic Vaults from DefLlama (API call)
-      if (shouldRunService('generic-vaults')) {
-        sourceNames.push('Generic Vaults')
-        discoveryPromises.push(
-          withTimeout(
-            new GenericVaultDiscovery(chainId).discoverTokens(),
-            45000, // 45s for API
-            'Generic Vaults',
-          ),
+          withTimeout(service.discoverTokens(), entry.timeoutMs, entry.displayName),
         )
       }
 
@@ -417,7 +223,6 @@ export class TokenDiscoveryService {
           allTokens.push(...tokens)
           successCount++
 
-          // Track source statistics
           if (tokens.length > 0) {
             const source = tokens[0]?.source || 'unknown'
             sourceStats[source] = tokens.length
@@ -426,23 +231,19 @@ export class TokenDiscoveryService {
             logger.debug(`Chain ${chainId}: ${sourceName} returned 0 tokens`)
           }
         } else if (result.status === 'fulfilled' && result.value === null) {
-          // Timeout case
           timeoutCount++
           logger.debug(`Chain ${chainId}: ${sourceName} timed out or returned null`)
         } else if (result.status === 'rejected') {
-          // Actual failure
           const errorMsg = result.reason?.message || result.reason || 'Unknown error'
           failedSources.push(`${sourceName}: ${errorMsg}`)
           logger.error(`Chain ${chainId}: ${sourceName} failed: ${errorMsg}`)
         }
       })
 
-      // Log summary at debug level
       logger.debug(
         `Chain ${chainId}: Discovery completed - ${successCount}/${discoveryPromises.length} sources succeeded${timeoutCount > 0 ? `, ${timeoutCount} timed out` : ''}`,
       )
 
-      // Log successful discoveries at debug level
       if (Object.keys(sourceStats).length > 0) {
         logger.debug(`Chain ${chainId}: Successful discoveries:`)
         Object.entries(sourceStats).forEach(([source, count]) => {
@@ -452,7 +253,6 @@ export class TokenDiscoveryService {
         })
       }
 
-      // Log failures at debug level
       if (failedSources.length > 0) {
         logger.debug(`Chain ${chainId}: Failed discoveries:`)
         failedSources.forEach((failure) => {
@@ -461,7 +261,6 @@ export class TokenDiscoveryService {
       }
 
       // CRITICAL: Always add base tokens
-      // This ensures major tokens are always present even if discovery fails
       if (config.baseTokens) {
         for (const address of config.baseTokens) {
           allTokens.push({
@@ -473,28 +272,11 @@ export class TokenDiscoveryService {
         logger.debug(`Chain ${chainId}: Added ${config.baseTokens.length} base tokens`)
       }
 
-      // Log token counts at debug level
       logger.debug(`Chain ${chainId}: Total tokens before deduplication: ${allTokens.length}`)
 
-      // Deduplicate and store discovered tokens
       const uniqueTokens = deduplicateTokens(allTokens)
       this.discoveredTokens.set(chainId, uniqueTokens)
 
-      // Debug: Check for specific vault
-      const TARGET_VAULT = '0x32651dd149a6ec22734882f790cbeb21402663f9'
-      const foundInAll = allTokens.find((t) => t.address === TARGET_VAULT)
-      const foundInUnique = uniqueTokens.find((t) => t.address === TARGET_VAULT)
-      if (foundInAll && !foundInUnique) {
-        logger.warn(
-          `Chain ${chainId}: Target vault ${TARGET_VAULT} was removed during deduplication`,
-        )
-      } else if (foundInAll) {
-        logger.debug(
-          `Chain ${chainId}: Target vault ${TARGET_VAULT} found with source: ${foundInAll.source}`,
-        )
-      }
-
-      // Log deduplication results at debug level
       if (allTokens.length !== uniqueTokens.length) {
         logger.debug(
           `Chain ${chainId}: Deduplication removed ${allTokens.length - uniqueTokens.length} duplicate tokens`,
@@ -544,7 +326,6 @@ export class TokenDiscoveryService {
   }
 
   private getRpcUrl(chainId: number): string | undefined {
-    // Use the existing RPC_URI_FOR_[chainId] pattern from .env
     const envKey = `RPC_URI_FOR_${chainId}`
     return process.env[envKey]
   }
@@ -571,26 +352,6 @@ export class TokenDiscoveryService {
       counts[chainId] = tokens.length
     }
     return counts
-  }
-
-  private countExpectedSources(chainId: number, config: any): number {
-    const rpcUrl = this.getRpcUrl(chainId)
-    let count = 0
-
-    // Count expected discovery sources
-    if ((config.yearnRegistryAddress || chainId) && rpcUrl) count++
-    if (config.curveFactoryAddress || config.curveApiUrl) count++
-    if (rpcUrl) count++ // Curve Factories
-    if (config.veloSugarAddress || config.veloApiUrl) count++
-    count++ // Token Lists (always)
-    count++ // Gamma (always)
-    count++ // Pendle (always)
-    if ((config.aaveV2LendingPool || config.aaveV3Pool) && rpcUrl) count++
-    if (config.compoundComptroller && rpcUrl) count++
-    if (rpcUrl) count++ // Uniswap
-    count++ // Balancer (always)
-
-    return count
   }
 }
 

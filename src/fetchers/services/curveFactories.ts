@@ -1,6 +1,5 @@
-import axios from 'axios'
 import { ERC20Token, Price } from 'models/index'
-import { createHttpsAgent, logger } from 'utils/index'
+import { fetchJson, logger } from 'utils/index'
 
 interface CurvePoolData {
   id: string
@@ -45,21 +44,15 @@ export class CurveFactoriesFetcher {
     try {
       logger.debug(`Curve Factories: Fetching prices for chain ${chainId}`)
 
-      const httpsAgent = createHttpsAgent()
+      const data = await fetchJson<CurveAPIResponse>(apiUrl)
 
-      const response = await axios.get<CurveAPIResponse>(apiUrl, {
-        timeout: 30000,
-        headers: { 'User-Agent': 'yearn-pricing-service' },
-        httpsAgent: httpsAgent,
-      })
-
-      if (!response.data?.success || !response.data?.data?.poolData) {
+      if (!data?.success || !data?.data?.poolData) {
         logger.warn(`Curve Factories API returned no data for chain ${chainId}`)
         return priceMap
       }
 
       const tokenAddresses = new Set(tokens.map((t) => t.address.toLowerCase()))
-      const poolData = response.data.data.poolData
+      const poolData = data.data.poolData
 
       // Create a map of token prices from coin data
       const coinPrices = new Map<string, number>()

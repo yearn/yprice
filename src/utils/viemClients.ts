@@ -57,15 +57,49 @@ const chains: Record<number, Chain> = {
   8453: base,
 }
 
-// Client cache
-const clients = new Map<number, PublicClient>()
+// Client cache - now supports multiple clients per chain for parallel execution
+const clients = new Map<string, PublicClient>()
+
+/**
+ * Create a new public client for the specified chain
+ * Used when you need an isolated client for parallel execution
+ */
+export function createIsolatedPublicClient(chainId: number): PublicClient {
+  const rpcUrl = process.env[`RPC_URI_FOR_${chainId}`]
+
+  if (!rpcUrl) {
+    throw new Error(`No RPC URL configured for chain ${chainId}`)
+  }
+
+  const chain = chains[chainId]
+  if (!chain) {
+    throw new Error(`Chain ${chainId} not supported`)
+  }
+
+  return createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+    batch: {
+      multicall: {
+        batchSize: 1024 * 1024, // 1MB batches
+        wait: 0, // Send immediately
+      },
+    },
+  })
+}
 
 /**
  * Get or create a public client for the specified chain
  * Clients are configured with multicall batching for optimal performance
+ *
+ * @param chainId - The chain ID
+ * @param context - Optional context string for isolated clients (e.g., 'yearn', 'curve')
+ *                  If provided, creates a separate client instance for that context
  */
-export function getPublicClient(chainId: number): PublicClient {
-  if (!clients.has(chainId)) {
+export function getPublicClient(chainId: number, context?: string): PublicClient {
+  const cacheKey = context ? `${chainId}-${context}` : `${chainId}`
+
+  if (!clients.has(cacheKey)) {
     const rpcUrl = process.env[`RPC_URI_FOR_${chainId}`]
 
     if (!rpcUrl) {
@@ -88,10 +122,10 @@ export function getPublicClient(chainId: number): PublicClient {
       },
     })
 
-    clients.set(chainId, client)
+    clients.set(cacheKey, client)
   }
 
-  return clients.get(chainId)!
+  return clients.get(cacheKey)!
 }
 
 /**
@@ -100,31 +134,4 @@ export function getPublicClient(chainId: number): PublicClient {
  */
 export function clearClients(): void {
   clients.clear()
-}
-
-/**
- * Helper to batch multiple contract reads using multicall
- * This is a convenience wrapper around publicClient.multicall
- */
-export async function batchReadContracts<T = any>(
-  chainId: number,
-  contracts: Array<{
-    address: `0x${string}`
-    abi: any
-    functionName: string
-    args?: any[]
-  }>,
-): Promise<Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>> {
-  const client = getPublicClient(chainId)
-
-  // Use multicall with allowFailure to handle tokens that might not have certain methods
-  const results = await client.multicall({
-    contracts: contracts.map((c) => ({
-      ...c,
-      args: c.args || [],
-    })),
-    allowFailure: true,
-  })
-
-  return results as Array<{ status: 'success' | 'failure'; result?: T; error?: Error }>
 }

@@ -21,12 +21,9 @@ export class ERC4626Fetcher {
     try {
       // Filter for vault tokens (marked with isVault flag) or potential vaults by pattern
       const potentialVaults = tokens.filter((token) => {
-        // First check if explicitly marked as vault
-        if (token.isVault) {
-          return true
-        }
-
-        // Fallback to pattern matching
+        if (token.isVault) return true
+        const source = token.source?.toLowerCase() || ''
+        if (source.includes('vault') || source.includes('erc4626')) return true
         const symbol = token.symbol?.toLowerCase() || ''
         const name = token.name?.toLowerCase() || ''
         return (

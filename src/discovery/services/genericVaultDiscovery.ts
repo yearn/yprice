@@ -1,6 +1,5 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { logger } from 'utils/index'
+import { fetchJson, logger } from 'utils/index'
 
 interface DefLlamaYield {
   chain: string
@@ -133,16 +132,12 @@ export class GenericVaultDiscovery implements Discovery {
 
   private async fetchDefLlamaYields(): Promise<DefLlamaYield[]> {
     try {
-      const response = await axios.get<DefLlamaYieldsResponse>(this.defLlamaUrl, {
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'yearn-pricing-service',
-          Accept: 'application/json',
-        },
+      const data = await fetchJson<DefLlamaYieldsResponse>(this.defLlamaUrl, {
+        headers: { Accept: 'application/json' },
       })
 
-      if (response.data?.data) {
-        return response.data.data
+      if (data?.data) {
+        return data.data
       }
 
       return []

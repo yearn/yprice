@@ -1,7 +1,12 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { uniqBy } from 'lodash'
-import { batchReadContracts, discoveryPriceCache, getPublicClient, logger } from 'utils/index'
+import {
+  batchReadContracts,
+  deduplicateTokens,
+  fetchJson,
+  getPublicClient,
+  logger,
+} from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 import { type Address, parseAbi, zeroAddress } from 'viem'
 
 interface KongVault {
@@ -22,20 +27,9 @@ interface KongGraphQLResponse {
   }
 }
 
-const REGISTRY_ADDRESSES: Record<number, string> = {
-  1: '0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804',
-  10: '0x79286Dd38C9017E5423073bAc11F53357Fc5C128',
-  137: '0x32bF3dc86E278F17D6449f88A9d30385106319Dc',
-  250: '0x727fe1759430df13655ddb0731dE0D0FDE929b04',
-  42161: '0x3199437193625DCcD6F9C9e98BDf93582200Eb1f',
-}
+const REGISTRY_ADDRESSES: Record<number, string> = {}
 
-const V3_REGISTRY_ADDRESSES: Record<number, string[]> = {
-  1: [
-    '0xd40ecF29e001c76Dcc4cC0D9cd50520CE845B038', // Current V3 Registry
-    '0xff31A1B020c868F6eA3f61Eb953344920EeCA3af', // Legacy V3 Registry
-  ],
-}
+const V3_REGISTRY_ADDRESSES: Record<number, string[]> = {}
 
 const REGISTRY_ABI = parseAbi([
   'function numVaults() view returns (uint256)',
@@ -66,17 +60,45 @@ export class YearnDiscovery implements Discovery {
     const tokens: TokenInfo[] = []
 
     try {
-      const kongTokens = await this.discoverFromKong()
-      tokens.push(...kongTokens)
+      // Run all discovery methods in parallel for maximum performance
+      const [kongResult, v2Result, v3Result] = await Promise.allSettled([
+        this.discoverFromKong(),
+        this.discoverFromRegistry(),
+        this.discoverFromV3Registries(),
+      ])
 
-      if (!!tokens.length) return tokens
+      // Process Kong results
+      if (kongResult.status === 'fulfilled') {
+        tokens.push(...kongResult.value)
+      } else {
+        logger.debug(
+          `Kong discovery failed for chain ${this.chainId}: ${kongResult.reason?.message || 'Unknown error'}`,
+        )
+      }
 
-      // Fallback to registries if Kong fails
-      await Promise.all([this.discoverFromRegistry(), this.discoverFromV3Registries()]).then(
-        ([v2Tokens, v3Tokens]) => {
-          tokens.push(...v2Tokens)
-          tokens.push(...v3Tokens)
-        },
+      // Process V2 registry results
+      if (v2Result.status === 'fulfilled') {
+        tokens.push(...v2Result.value)
+      } else if (this.registryAddress) {
+        logger.debug(
+          `V2 registry discovery failed for chain ${this.chainId}: ${v2Result.reason?.message || 'Unknown error'}`,
+        )
+      }
+
+      // Process V3 registry results
+      if (v3Result.status === 'fulfilled') {
+        tokens.push(...v3Result.value)
+      } else if (this.v3RegistryAddresses.length > 0) {
+        logger.debug(
+          `V3 registry discovery failed for chain ${this.chainId}: ${v3Result.reason?.message || 'Unknown error'}`,
+        )
+      }
+
+      // Log discovery summary
+      const vaultCount = tokens.filter((t) => t.isVault).length
+      const underlyingCount = tokens.filter((t) => t.source?.includes('underlying')).length
+      logger.info(
+        `YearnDiscovery complete for chain ${this.chainId}: ${vaultCount} vaults, ${underlyingCount} underlying tokens, ${tokens.length} total`,
       )
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
@@ -85,7 +107,7 @@ export class YearnDiscovery implements Discovery {
       )
     }
 
-    return uniqBy(tokens, (token) => `${token.chainId}-${token.address.toLowerCase()}`)
+    return deduplicateTokens(tokens)
   }
 
   private async discoverFromKong(): Promise<TokenInfo[]> {
@@ -108,19 +130,14 @@ export class YearnDiscovery implements Discovery {
         }
       `
 
-      const response = await axios.post<KongGraphQLResponse>(
-        this.kongUrl,
-        { query },
-        {
-          timeout: 30000,
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'yearn-pricing-service',
-          },
-        },
-      )
+      const data = await fetchJson<KongGraphQLResponse>(this.kongUrl, {
+        method: 'POST',
+        data: { query },
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/json' },
+      })
 
-      const vaults = response.data?.data?.vaults
+      const vaults = data?.data?.vaults
 
       if (Array.isArray(vaults)) {
         logger.debug(`Kong API returned ${vaults.length} vaults for chain ${this.chainId}`)
@@ -137,14 +154,17 @@ export class YearnDiscovery implements Discovery {
 
             // Cache pricePerShare data for the vault
             if (vault.pricePerShare) {
-              const pricePerShare = BigInt(vault.pricePerShare)
+              const pricePerShare = BigInt(Math.round(Number(vault.pricePerShare)))
               const underlyingAddress = vault.asset?.address || vault.token
               const underlyingDecimals = vault.asset?.decimals
+              // Determine vault version based on whether asset field exists
+              const vaultVersion = vault.asset?.address ? 'v3' : 'v2'
 
-              discoveryPriceCache.set(this.chainId, vault.address, undefined, 'yearn-vault', {
+              priceCache.setDiscovered(this.chainId, vault.address, undefined, 'yearn-vault', {
                 pricePerShare,
                 underlyingAddress: underlyingAddress?.toLowerCase(),
                 underlyingDecimals,
+                vaultVersion,
               })
             }
           }
@@ -194,51 +214,69 @@ export class YearnDiscovery implements Discovery {
     const tokens: TokenInfo[] = []
 
     try {
-      const tokenContracts = vaultAddresses.map((vaultAddress) => ({
-        address: vaultAddress,
-        abi: VAULT_ABI,
-        functionName: 'token' as const,
-        args: [],
-      }))
+      // Batch all token/asset calls together for maximum efficiency
+      const contracts = vaultAddresses.flatMap((vaultAddress) => [
+        {
+          address: vaultAddress,
+          abi: VAULT_ABI,
+          functionName: 'token' as const, // V2 method
+          args: [],
+        },
+        {
+          address: vaultAddress,
+          abi: VAULT_ABI,
+          functionName: 'asset' as const, // V3 method
+          args: [],
+        },
+      ])
 
-      const tokenResults = await batchReadContracts<Address>(this.chainId, tokenContracts)
+      const results = await batchReadContracts<Address>(this.chainId, contracts)
 
-      const v3VaultAddresses: Address[] = []
-      vaultAddresses.forEach((vaultAddress, index) => {
-        const result = tokenResults[index]
-        if (!result || result.status !== 'success' || !result.result) {
-          v3VaultAddresses.push(vaultAddress)
-        } else if (result.result && result.result !== zeroAddress) {
+      // Process results - each vault has 2 results (token and asset)
+      for (let i = 0; i < vaultAddresses.length; i++) {
+        const vaultAddress = vaultAddresses[i]
+        if (!vaultAddress) continue // Skip if undefined
+
+        const tokenResult = results[i * 2] // V2 token() result
+        const assetResult = results[i * 2 + 1] // V3 asset() result
+
+        // Use whichever succeeds (V2 token or V3 asset)
+        let underlyingAddress: Address | undefined
+        let vaultVersion: 'v2' | 'v3' | undefined
+
+        if (
+          tokenResult &&
+          tokenResult.status === 'success' &&
+          tokenResult.result &&
+          tokenResult.result !== zeroAddress
+        ) {
+          underlyingAddress = tokenResult.result
+          vaultVersion = 'v2'
+        } else if (
+          assetResult &&
+          assetResult.status === 'success' &&
+          assetResult.result &&
+          assetResult.result !== zeroAddress
+        ) {
+          underlyingAddress = assetResult.result
+          vaultVersion = 'v3'
+        }
+
+        if (underlyingAddress && vaultAddress) {
           tokens.push({
-            address: result.result.toLowerCase(),
+            address: underlyingAddress.toLowerCase(),
             chainId: this.chainId,
             source: 'yearn-underlying',
           })
+
+          // Cache the vault version for later use
+          const cachedData = priceCache.getDiscovered(this.chainId, vaultAddress)
+          priceCache.setDiscovered(this.chainId, vaultAddress, undefined, 'yearn-vault', {
+            ...cachedData?.metadata,
+            underlyingAddress: underlyingAddress.toLowerCase(),
+            vaultVersion,
+          })
         }
-      })
-
-      if (v3VaultAddresses.length > 0) {
-        const v3AssetContracts = v3VaultAddresses.map((vaultAddress) => ({
-          address: vaultAddress,
-          abi: VAULT_ABI,
-          functionName: 'asset' as const,
-          args: [],
-        }))
-
-        const v3AssetResults = await batchReadContracts<Address>(this.chainId, v3AssetContracts)
-
-        v3AssetResults.forEach((result) => {
-          if (result && result.status === 'success' && result.result) {
-            const underlyingAddress = result.result
-            if (underlyingAddress && underlyingAddress !== zeroAddress) {
-              tokens.push({
-                address: underlyingAddress.toLowerCase(),
-                chainId: this.chainId,
-                source: 'yearn-underlying',
-              })
-            }
-          }
-        })
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
@@ -253,20 +291,28 @@ export class YearnDiscovery implements Discovery {
   private async discoverFromV3Registries(): Promise<TokenInfo[]> {
     const tokens: TokenInfo[] = []
 
-    for (const registryAddress of this.v3RegistryAddresses) {
+    // Process all V3 registries in parallel for better performance
+    const registryPromises = this.v3RegistryAddresses.map(async (registryAddress) => {
       try {
         const registryTokens = await this.discoverFromSpecificRegistry(registryAddress, 'v3')
-        tokens.push(...registryTokens)
         logger.debug(
           `Discovered ${registryTokens.length} tokens from V3 registry ${registryAddress} on chain ${this.chainId}`,
         )
+        return registryTokens
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message.split('\n')[0] : String(error)
         logger.warn(
           `V3 registry ${registryAddress} discovery failed for chain ${this.chainId}: ${(errorMsg || 'Unknown error').substring(0, 100)}`,
         )
+        return [] // Return empty array on error to continue with other registries
       }
-    }
+    })
+
+    // Wait for all registries to complete and collect results
+    const allResults = await Promise.all(registryPromises)
+    allResults.forEach((registryTokens) => {
+      tokens.push(...registryTokens)
+    })
 
     return tokens
   }
@@ -299,7 +345,8 @@ export class YearnDiscovery implements Discovery {
       )
 
       const vaultIndexContracts = []
-      for (let i = 0; i < Math.min(vaultCount, 200); i++) {
+      const maxVaultsToFetch = this.chainId === 1 ? 500 : 200 // Higher limit on mainnet
+      for (let i = 0; i < Math.min(vaultCount, maxVaultsToFetch); i++) {
         vaultIndexContracts.push({
           address: registryAddress as Address,
           abi: REGISTRY_ABI,
@@ -326,6 +373,13 @@ export class YearnDiscovery implements Discovery {
           chainId: this.chainId,
           source: `yearn-${version}-vault`,
           isVault: true,
+        })
+
+        // Cache vault version for later use
+        const cachedData = priceCache.getDiscovered(this.chainId, vaultAddress)
+        priceCache.setDiscovered(this.chainId, vaultAddress, undefined, 'yearn-vault', {
+          ...cachedData?.metadata,
+          vaultVersion: version,
         })
       }
 

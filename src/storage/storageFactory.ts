@@ -1,4 +1,3 @@
-import { Price } from 'models/index'
 import { PriceStorage } from 'storage/priceStorage'
 import { RedisStorage } from 'storage/redisStorage'
 import { StorageInterface } from 'storage/storageInterface'
@@ -14,21 +13,17 @@ export function initializeStorage(
   cacheTTL?: number,
   backupDir?: string,
 ): StorageInterface {
-  // If already initialized with same type, return existing instance
   if (storageInstance && currentStorageType === type) {
     return storageInstance
   }
 
-  // Create new storage instance based on type
   switch (type) {
     case 'redis':
       try {
-        storageInstance = new RedisStorage(cacheTTL)
+        const onCircuitOpen = () => fallbackToFileStorage(cacheTTL, backupDir)
+        storageInstance = new RedisStorage(cacheTTL, onCircuitOpen)
         currentStorageType = 'redis'
         logger.info('Using Redis storage for prices')
-
-        // Don't load backup here - it will be done asynchronously after initialization
-        // The Redis storage will check and load as needed
       } catch (error) {
         logger.error('Failed to initialize Redis storage:', error)
         logger.warn('Falling back to file storage')
@@ -46,6 +41,12 @@ export function initializeStorage(
   return storageInstance
 }
 
+function fallbackToFileStorage(cacheTTL?: number, backupDir?: string): void {
+  logger.warn('Redis circuit breaker tripped — falling back to file storage')
+  storageInstance = new PriceStorage(cacheTTL, backupDir)
+  currentStorageType = 'file'
+}
+
 export function getStorage(): StorageInterface {
   if (!storageInstance) {
     throw new Error('Storage not initialized. Call initializeStorage first.')
@@ -55,41 +56,4 @@ export function getStorage(): StorageInterface {
 
 export function getCurrentStorageType(): StorageType | null {
   return currentStorageType
-}
-
-// Wrapper class to handle async operations transparently
-export class StorageWrapper implements StorageInterface {
-  private storage: StorageInterface
-
-  constructor(storage: StorageInterface) {
-    this.storage = storage
-  }
-
-  async storePrice(chainId: number, price: Price): Promise<void> {
-    await this.storage.storePrice(chainId, price)
-  }
-
-  async storePrices(chainId: number, prices: Price[]): Promise<void> {
-    await this.storage.storePrices(chainId, prices)
-  }
-
-  async getPrice(chainId: number, address: string): Promise<Price | undefined> {
-    return await this.storage.getPrice(chainId, address)
-  }
-
-  async listPrices(chainId: number): Promise<{ asMap: Map<string, Price>; asSlice: Price[] }> {
-    return await this.storage.listPrices(chainId)
-  }
-
-  async getAllPrices(): Promise<Map<number, Map<string, Price>>> {
-    return await this.storage.getAllPrices()
-  }
-
-  async clearCache(chainId?: number): Promise<void> {
-    await this.storage.clearCache(chainId)
-  }
-
-  async getStats(chainId?: number): Promise<any> {
-    return await this.storage.getStats(chainId)
-  }
 }

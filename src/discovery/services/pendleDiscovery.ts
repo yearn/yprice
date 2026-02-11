@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { createHttpsAgent, deduplicateTokens, discoveryPriceCache, logger } from 'utils/index'
+import { deduplicateTokens, fetchJson, logger } from 'utils/index'
+import { priceCache } from 'utils/priceCache'
 import { zeroAddress } from 'viem'
 
 interface PendleAsset {
@@ -131,19 +131,12 @@ export class PendleDiscovery implements Discovery {
     const tokens: TokenInfo[] = []
 
     try {
-      const httpsAgent = createHttpsAgent()
-
-      const response = await axios.get<PendleResponse>(apiUrl, {
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'yearn-pricing-service',
-          Accept: 'application/json',
-        },
-        httpsAgent: httpsAgent,
+      const data = await fetchJson<PendleResponse>(apiUrl, {
+        headers: { Accept: 'application/json' },
       })
 
-      if (response.data?.results) {
-        for (const asset of response.data.results) {
+      if (data?.results) {
+        for (const asset of data.results) {
           // Add main asset
           tokens.push({
             address: asset.address.toLowerCase(),
@@ -157,7 +150,7 @@ export class PendleDiscovery implements Discovery {
           // Cache price if available
           if (asset.price?.usd) {
             const price = BigInt(Math.floor(asset.price.usd * 1e6))
-            discoveryPriceCache.set(this.chainId, asset.address, price, 'pendle-asset')
+            priceCache.setDiscovered(this.chainId, asset.address, price, 'pendle-asset')
           }
 
           // Add PT (Principal Token) if exists
@@ -172,7 +165,7 @@ export class PendleDiscovery implements Discovery {
             // Cache PT price if available
             if (asset.pt.price?.usd) {
               const price = BigInt(Math.floor(asset.pt.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, asset.pt.address, price, 'pendle-pt')
+              priceCache.setDiscovered(this.chainId, asset.pt.address, price, 'pendle-pt')
             }
           }
 
@@ -188,7 +181,7 @@ export class PendleDiscovery implements Discovery {
             // Cache YT price if available
             if (asset.yt.price?.usd) {
               const price = BigInt(Math.floor(asset.yt.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, asset.yt.address, price, 'pendle-yt')
+              priceCache.setDiscovered(this.chainId, asset.yt.address, price, 'pendle-yt')
             }
           }
 
@@ -205,7 +198,7 @@ export class PendleDiscovery implements Discovery {
             // Cache SY price if available
             if (asset.sy.price?.usd) {
               const price = BigInt(Math.floor(asset.sy.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, asset.sy.address, price, 'pendle-sy')
+              priceCache.setDiscovered(this.chainId, asset.sy.address, price, 'pendle-sy')
             }
           }
 
@@ -237,31 +230,36 @@ export class PendleDiscovery implements Discovery {
     let skip = 0
 
     try {
-      const httpsAgent = createHttpsAgent()
-
-      // Fetch all pages
-      while (true) {
-        const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${skip}&limit=${limit}`
-        const response = await axios.get<PendleMarketsResponse>(paginatedUrl, {
-          timeout: 30000,
-          headers: {
-            'User-Agent': 'yearn-pricing-service',
-            Accept: 'application/json',
-          },
-          httpsAgent: httpsAgent,
-        })
-
-        if (!response.data?.results || response.data.results.length === 0) {
-          break
+      // Fetch pages with small concurrency window
+      const window = 4
+      let done = false
+      while (!done) {
+        const tasks: Promise<void>[] = []
+        for (let i = 0; i < window; i++) {
+          const currentSkip = skip + i * limit
+          const paginatedUrl = `${baseUrl}?order_by=name%3A1&skip=${currentSkip}&limit=${limit}`
+          tasks.push(
+            fetchJson<PendleMarketsResponse>(paginatedUrl, {
+              headers: { Accept: 'application/json' },
+              retries: 1,
+            })
+              .then((data) => {
+                if (data?.results && data.results.length > 0) {
+                  allMarkets.push(...data.results)
+                  if (data.results.length < limit) {
+                    done = true
+                  }
+                } else {
+                  done = true
+                }
+              })
+              .catch(() => {
+                // Ignore errors per page
+              }),
+          )
         }
-
-        allMarkets.push(...response.data.results)
-
-        if (response.data.results.length < limit) {
-          break
-        }
-
-        skip += limit
+        await Promise.all(tasks)
+        skip += window * limit
       }
 
       if (allMarkets.length > 0) {
@@ -277,7 +275,7 @@ export class PendleDiscovery implements Discovery {
             // Cache market price if available
             if (market.price?.usd) {
               const price = BigInt(Math.floor(market.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, market.address, price, 'pendle-market')
+              priceCache.setDiscovered(this.chainId, market.address, price, 'pendle-market')
             }
           }
 
@@ -293,7 +291,7 @@ export class PendleDiscovery implements Discovery {
             // Cache PT price if available
             if (market.pt.price?.usd) {
               const price = BigInt(Math.floor(market.pt.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, market.pt.address, price, 'pendle-pt')
+              priceCache.setDiscovered(this.chainId, market.pt.address, price, 'pendle-pt')
             }
           }
 
@@ -309,7 +307,7 @@ export class PendleDiscovery implements Discovery {
             // Cache YT price if available
             if (market.yt.price?.usd) {
               const price = BigInt(Math.floor(market.yt.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, market.yt.address, price, 'pendle-yt')
+              priceCache.setDiscovered(this.chainId, market.yt.address, price, 'pendle-yt')
             }
           }
 
@@ -326,7 +324,7 @@ export class PendleDiscovery implements Discovery {
             // Cache SY price if available
             if (market.sy.price?.usd) {
               const price = BigInt(Math.floor(market.sy.price.usd * 1e6))
-              discoveryPriceCache.set(this.chainId, market.sy.address, price, 'pendle-sy')
+              priceCache.setDiscovered(this.chainId, market.sy.address, price, 'pendle-sy')
             }
           }
         }

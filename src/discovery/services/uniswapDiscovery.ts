@@ -1,6 +1,11 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { batchReadContracts, deduplicateTokens, getPublicClient, logger } from 'utils/index'
+import {
+  batchReadContracts,
+  deduplicateTokens,
+  fetchJson,
+  getPublicClient,
+  logger,
+} from 'utils/index'
 import { type Address, parseAbi } from 'viem'
 
 // Uniswap V2 Factory addresses
@@ -113,57 +118,65 @@ export class UniswapDiscovery implements Discovery {
         })
       }
 
-      const batchSize = 100
+      const batchSize = 200
+      const pairAddresses: string[] = []
       for (let i = 0; i < pairContracts.length; i += batchSize) {
         const batch = pairContracts.slice(i, i + batchSize)
         const results = await batchReadContracts<Address>(this.chainId, batch)
-
         for (const result of results) {
           if (result && result.status === 'success' && result.result) {
-            const pairAddress = result.result
-
-            // Add LP token
-            tokens.push({
-              address: pairAddress.toLowerCase(),
-              chainId: this.chainId,
-              source: 'uniswap-v2-lp',
-            })
-
-            // Try to get underlying tokens
-            try {
-              const [token0Result, token1Result] = await Promise.all([
-                publicClient.readContract({
-                  address: pairAddress,
-                  abi: V2_PAIR_ABI,
-                  functionName: 'token0',
-                }),
-                publicClient.readContract({
-                  address: pairAddress,
-                  abi: V2_PAIR_ABI,
-                  functionName: 'token1',
-                }),
-              ])
-
-              if (token0Result) {
-                tokens.push({
-                  address: (token0Result as string).toLowerCase(),
-                  chainId: this.chainId,
-                  source: 'uniswap-v2-token',
-                })
-              }
-
-              if (token1Result) {
-                tokens.push({
-                  address: (token1Result as string).toLowerCase(),
-                  chainId: this.chainId,
-                  source: 'uniswap-v2-token',
-                })
-              }
-            } catch (_error) {
-              // Skip if we can't get underlying tokens
-            }
+            pairAddresses.push((result.result as string).toLowerCase())
           }
         }
+      }
+
+      // Add LP tokens
+      for (const pairAddress of pairAddresses) {
+        tokens.push({ address: pairAddress, chainId: this.chainId, source: 'uniswap-v2-lp' })
+      }
+
+      // Batch fetch token0/token1 for all pairs using multicall in chunks
+      const token0Contracts = pairAddresses.map((pair) => ({
+        address: pair as Address,
+        abi: V2_PAIR_ABI,
+        functionName: 'token0' as const,
+        args: [],
+      }))
+      const token1Contracts = pairAddresses.map((pair) => ({
+        address: pair as Address,
+        abi: V2_PAIR_ABI,
+        functionName: 'token1' as const,
+        args: [],
+      }))
+
+      const chunkSize = 250
+      for (let i = 0; i < token0Contracts.length; i += chunkSize) {
+        const c0 = token0Contracts.slice(i, i + chunkSize)
+        const c1 = token1Contracts.slice(i, i + chunkSize)
+        const [r0, r1] = await Promise.all([
+          batchReadContracts<Address>(this.chainId, c0),
+          batchReadContracts<Address>(this.chainId, c1),
+        ])
+
+        r0.forEach((result) => {
+          if (result && result.status === 'success' && result.result) {
+            tokens.push({
+              address: (result.result as string).toLowerCase(),
+              chainId: this.chainId,
+              source: 'uniswap-v2-token',
+            })
+          }
+        })
+
+        r1.forEach((result) => {
+          if (result && result.status === 'success' && result.result) {
+            tokens.push({
+              address: (result.result as string).toLowerCase(),
+              chainId: this.chainId,
+              source: 'uniswap-v2-token',
+            })
+          }
+        })
       }
 
       logger.debug(`Chain ${this.chainId}: Found ${tokens.length} Uniswap V2 tokens`)
@@ -195,9 +208,9 @@ export class UniswapDiscovery implements Discovery {
     const tokenListUrl = UNISWAP_TOKEN_LISTS[this.chainId]
     if (tokenListUrl) {
       try {
-        const response = await axios.get(tokenListUrl, { timeout: 10000 })
-        if (response.data?.tokens) {
-          for (const token of response.data.tokens) {
+        const data = await fetchJson<any>(tokenListUrl, { timeout: 10000 })
+        if (data?.tokens) {
+          for (const token of data.tokens) {
             if (token.chainId === this.chainId && token.address) {
               tokens.push({
                 address: token.address.toLowerCase(),

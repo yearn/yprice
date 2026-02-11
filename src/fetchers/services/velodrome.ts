@@ -164,7 +164,7 @@ export class VelodromeFetcher {
       const usdcAddress = usdcAddresses[chainId as keyof typeof usdcAddresses]?.toLowerCase()
 
       // Sugar Oracle expects uint8 for length, so we need to limit to 255 tokens
-      const maxTokensPerCall = 10 // Very small batches to ensure success
+      const maxTokensPerCall = 50
       const tokenBatches = []
       for (let i = 0; i < tokenAddresses.length; i += maxTokensPerCall) {
         tokenBatches.push(tokenAddresses.slice(i, i + maxTokensPerCall))
@@ -227,9 +227,9 @@ export class VelodromeFetcher {
         }
       })
 
-      // Process batches sequentially to avoid rate limits
-      const parallelLimit = 1 // Process one at a time
-      const delayBetweenBatches = 200 // Small delay between batches
+      // Process batches with small parallelism to improve throughput
+      const parallelLimit = 3
+      const delayBetweenBatches = 100
 
       let successfulBatches = 0
       let failedBatches = 0

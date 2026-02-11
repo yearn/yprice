@@ -1,4 +1,3 @@
-import { filter, forEach, groupBy, includes, mapValues, reduce } from 'lodash'
 import { Price } from 'models/index'
 import { logger } from 'utils/logger'
 
@@ -6,6 +5,14 @@ interface CachedPrice {
   price: Price
   timestamp: number
   ttl: number
+  metadata?: Record<string, any>
+}
+
+export interface DiscoveredPrice {
+  address: string
+  price?: bigint
+  source: string
+  metadata?: Record<string, any>
 }
 
 interface TokenType {
@@ -17,6 +24,7 @@ interface TokenType {
 
 export class PriceCache {
   private cache: Map<string, CachedPrice> = new Map()
+  private discoveryCache: Map<string, DiscoveredPrice> = new Map()
 
   private readonly TTL_STABLECOIN = 5 * 60 * 1000
   private readonly TTL_MAJOR = 60 * 1000
@@ -74,15 +82,12 @@ export class PriceCache {
   }
 
   getMany(chainId: number, addresses: string[]): Map<string, Price> {
-    return reduce(
-      addresses,
-      (acc, address) => {
-        const cached = this.get(chainId, address)
-        if (cached) acc.set(address.toLowerCase(), cached)
-        return acc
-      },
-      new Map<string, Price>(),
-    )
+    const result = new Map<string, Price>()
+    for (const address of addresses) {
+      const cached = this.get(chainId, address)
+      if (cached) result.set(address.toLowerCase(), cached)
+    }
+    return result
   }
 
   set(chainId: number, address: string, price: Price, symbol?: string): void {
@@ -97,24 +102,45 @@ export class PriceCache {
     })
   }
 
+  setDiscovered(
+    chainId: number,
+    address: string,
+    price: bigint | undefined,
+    source: string,
+    metadata?: Record<string, any>,
+  ): void {
+    const key = `disc:${chainId}:${address.toLowerCase()}`
+    this.discoveryCache.set(key, {
+      address: address.toLowerCase(),
+      price,
+      source,
+      metadata,
+    })
+  }
+
+  getDiscovered(chainId: number, address: string): DiscoveredPrice | null {
+    const key = `disc:${chainId}:${address.toLowerCase()}`
+    return this.discoveryCache.get(key) ?? null
+  }
+
   setMany(chainId: number, prices: Map<string, Price>, symbols?: Map<string, string>): void {
-    forEach(Array.from(prices.entries()), ([address, price]) => {
+    for (const [address, price] of prices.entries()) {
       const symbol = symbols?.get(address.toLowerCase())
       this.set(chainId, address, price, symbol)
-    })
+    }
   }
 
   cleanup(): void {
     const now = Date.now()
-    const expired = filter(
-      Array.from(this.cache.entries()),
-      ([_, cached]) => now - cached.timestamp > cached.ttl,
-    )
-
-    forEach(expired, ([key]) => this.cache.delete(key))
-
-    if (expired.length > 0) {
-      logger.debug(`Price cache: Removed ${expired.length} expired entries`)
+    let expiredCount = 0
+    for (const [key, cached] of this.cache.entries()) {
+      if (now - cached.timestamp > cached.ttl) {
+        this.cache.delete(key)
+        expiredCount++
+      }
+    }
+    if (expiredCount > 0) {
+      logger.debug(`Price cache: Removed ${expiredCount} expired entries`)
     }
   }
 
@@ -125,19 +151,14 @@ export class PriceCache {
   }
 
   getStats(): { total: number; chains: Map<number, number> } {
-    const entries = Array.from(this.cache.keys())
-    const grouped = groupBy(entries, (key) => key.split(':')[0] || '0')
-
-    const chains = new Map<number, number>(
-      Object.entries(mapValues(grouped, (arr) => arr.length)).map(([chainId, count]) => [
-        parseInt(chainId, 10),
-        count,
-      ]),
-    )
-
+    const chainCounts = new Map<number, number>()
+    for (const key of this.cache.keys()) {
+      const chainId = parseInt(key.split(':')[0] || '0', 10)
+      chainCounts.set(chainId, (chainCounts.get(chainId) || 0) + 1)
+    }
     return {
       total: this.cache.size,
-      chains,
+      chains: chainCounts,
     }
   }
 
@@ -151,15 +172,15 @@ export class PriceCache {
     return {
       isStablecoin:
         this.STABLECOINS.has(lowerSymbol) ||
-        includes(lowerSymbol, 'usd') ||
-        includes(lowerSymbol, 'eur'),
+        lowerSymbol.includes('usd') ||
+        lowerSymbol.includes('eur'),
       isMajor: this.MAJOR_TOKENS.has(lowerSymbol),
       isLP:
-        includes(lowerSymbol, 'lp') || includes(lowerSymbol, '-') || includes(lowerSymbol, 'uni-v'),
+        lowerSymbol.includes('lp') || lowerSymbol.includes('-') || lowerSymbol.includes('uni-v'),
       isVault:
         lowerSymbol.startsWith('yv') ||
-        includes(lowerSymbol, 'vault') ||
-        includes(lowerSymbol, '4626'),
+        lowerSymbol.includes('vault') ||
+        lowerSymbol.includes('4626'),
     }
   }
 

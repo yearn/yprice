@@ -1,6 +1,5 @@
-import axios from 'axios'
 import { Discovery, TokenInfo } from 'discovery/types'
-import { createHttpsAgent, deduplicateTokens, logger } from 'utils/index'
+import { deduplicateTokens, fetchJson, logger } from 'utils/index'
 import { zeroAddress } from 'viem'
 
 // Balancer subgraph endpoints - Using dev endpoints to avoid rate limits
@@ -50,9 +49,11 @@ export class BalancerDiscovery implements Discovery {
     const subgraphTokens = await this.discoverFromSubgraph()
     tokens.push(...subgraphTokens)
 
-    // Try API as fallback/supplement
-    const apiTokens = await this.discoverFromAPI()
-    tokens.push(...apiTokens)
+    // If subgraph is sufficiently large, skip API fallback to avoid duplicate large fetches
+    if (subgraphTokens.length < 1000) {
+      const apiTokens = await this.discoverFromAPI()
+      tokens.push(...apiTokens)
+    }
 
     logger.debug(`Chain ${this.chainId}: Discovered ${tokens.length} Balancer tokens total`)
     return deduplicateTokens(tokens)
@@ -85,22 +86,14 @@ export class BalancerDiscovery implements Discovery {
         }
       `
 
-      const httpsAgent = createHttpsAgent()
+      const response = await fetchJson<BalancerSubgraphResponse>(subgraphUrl, {
+        method: 'POST',
+        data: { query },
+        headers: { 'Content-Type': 'application/json' },
+      })
 
-      const response = await axios.post<BalancerSubgraphResponse>(
-        subgraphUrl,
-        { query },
-        {
-          timeout: 30000,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          httpsAgent: httpsAgent,
-        },
-      )
-
-      if (response.data?.data?.pools) {
-        for (const pool of response.data.data.pools) {
+      if (response?.data?.pools) {
+        for (const pool of response.data.pools) {
           // Add pool token (BPT - Balancer Pool Token)
           tokens.push({
             address: pool.address.toLowerCase(),
@@ -172,18 +165,12 @@ export class BalancerDiscovery implements Discovery {
         return tokens
       }
 
-      const httpsAgent = createHttpsAgent()
-
-      const response = await axios.get(`${BALANCER_API_URL}${this.chainId}`, {
-        timeout: 30000,
-        headers: {
-          Accept: 'application/json',
-        },
-        httpsAgent: httpsAgent,
+      const data = await fetchJson<any[]>(`${BALANCER_API_URL}${this.chainId}`, {
+        headers: { Accept: 'application/json' },
       })
 
-      if (response.data && Array.isArray(response.data)) {
-        for (const pool of response.data) {
+      if (data && Array.isArray(data)) {
+        for (const pool of data) {
           // Add pool token
           if (pool.address) {
             tokens.push({
