@@ -1,6 +1,6 @@
 # Bun is only used to install dependencies from bun.lock (the repo has no
 # package-lock.json). The app itself is built and run on Node.
-FROM oven/bun:1.4.3-slim AS bun
+FROM oven/bun:1.4.4-slim AS bun
 
 # ---------- Build stage ----------
 FROM node:22.23.4-slim AS builder
