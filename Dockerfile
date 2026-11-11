@@ -3,7 +3,7 @@
 FROM oven/bun:1.4.4-slim AS bun
 
 # ---------- Build stage ----------
-FROM node:22.23.4-slim AS builder
+FROM node:22.23.5-slim AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
@@ -33,7 +33,7 @@ RUN rm -rf node_modules \
     && bun install --frozen-lockfile --production
 
 # ---------- Production stage ----------
-FROM node:22.23.4-slim
+FROM node:22.23.5-slim
 
 # Refresh the system CA store (eMudhra intermediate distrust)
 RUN apt-get update \
